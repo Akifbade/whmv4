@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, FormEvent } from 'react';
 import QRCode from 'react-qr-code';
 import { Rack, RackStatus, UserRole, Shipment } from '../types';
@@ -81,15 +80,53 @@ const Scanner: React.FC<{ onAssign: (shipmentId: string, rackId: string) => void
 };
 
 const PrintRackQrModal: React.FC<{ racks: Rack[]; onClose: () => void }> = ({ racks, onClose }) => {
-    // This modal's functionality remains the same
     const handlePrint = () => {
         const printContents = document.getElementById('printable-racks-area')?.innerHTML;
-        const originalContents = document.body.innerHTML;
+        const styles = Array.from(document.styleSheets)
+            .map(styleSheet => {
+                try {
+                    return Array.from(styleSheet.cssRules)
+                        .map(rule => rule.cssText)
+                        .join('');
+                } catch (e) {
+                    console.warn('Cannot read cross-origin stylesheet');
+                    return '';
+                }
+            })
+            .join('\n');
+
         if (printContents) {
-            document.body.innerHTML = printContents;
-            window.print();
-            document.body.innerHTML = originalContents;
-            window.location.reload();
+            const printWindow = window.open('', '', 'height=600,width=800');
+            printWindow?.document.write('<html><head><title>Print Rack Labels</title>');
+            printWindow?.document.write('<style>');
+            printWindow?.document.write(styles);
+            printWindow?.document.write(`
+                @media print {
+                    body { -webkit-print-color-adjust: exact; }
+                    .label-container { 
+                        page-break-inside: avoid; 
+                        border: 1px solid #ccc !important;
+                        padding: 1rem !important;
+                        background-color: #f9fafb !important;
+                        border-radius: 0.5rem !important;
+                        display: flex !important;
+                        flex-direction: column !important;
+                        align-items: center !important;
+                        text-align: center !important;
+                    }
+                    .qr-wrapper { background-color: white !important; padding: 0.5rem !important; border-radius: 0.25rem !important; }
+                }
+                .print-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; }
+            `);
+            printWindow?.document.write('</style></head><body>');
+            printWindow?.document.write(`<div class="print-grid">${printContents}</div>`);
+            printWindow?.document.write('</body></html>');
+            printWindow?.document.close();
+            printWindow?.focus();
+            setTimeout(() => {
+                printWindow?.print();
+                printWindow?.close();
+            }, 250);
         }
     };
     return (
@@ -98,8 +135,8 @@ const PrintRackQrModal: React.FC<{ racks: Rack[]; onClose: () => void }> = ({ ra
                 <h3 className="text-2xl font-bold mb-6">Print Rack QR Labels</h3>
                 <div id="printable-racks-area" className="overflow-y-auto grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 p-2">
                     {racks.map(rack => (
-                        <div key={rack.id} className="flex flex-col items-center text-center p-4 bg-gray-100 dark:bg-gray-700 rounded-lg border">
-                            <div className="p-2 bg-white rounded-md"><QRCode value={JSON.stringify({ rackId: rack.id })} size={128} /></div>
+                        <div key={rack.id} className="label-container flex flex-col items-center text-center p-4 bg-gray-100 dark:bg-gray-700 rounded-lg border border-gray-300 dark:border-gray-600">
+                            <div className="qr-wrapper p-2 bg-white rounded-md"><QRCode value={JSON.stringify({ rackId: rack.id })} size={128} /></div>
                             <p className="mt-2 font-semibold">{rack.rackLine}</p>
                             <p className="text-sm">Slot: {rack.slot}</p>
                         </div>
@@ -163,12 +200,11 @@ const Racks: React.FC<RacksProps> = ({ racks, shipments, addRack, assignShipment
   const [showRackQrModal, setShowRackQrModal] = useState(false);
   const [showAddRackModal, setShowAddRackModal] = useState(false);
   
-  // FIX: Explicitly typed the accumulator `acc` to ensure `groupedRacks` has the correct type `Record<string, Rack[]>`.
-  // This prevents TypeScript from inferring `rackList` as `unknown`, which is not iterable and causes an error.
-  const groupedRacks = racks.reduce((acc: Record<string, Rack[]>, rack) => {
+  // FIX: The initial value for reduce must be typed to prevent TypeScript from inferring `rackList` as `unknown`.
+  const groupedRacks = racks.reduce((acc, rack) => {
     (acc[rack.rackLine] = acc[rack.rackLine] || []).push(rack);
     return acc;
-  }, {});
+  }, {} as Record<string, Rack[]>);
 
   const handleAssignment = async (shipmentId: string, rackId: string) => {
     try {

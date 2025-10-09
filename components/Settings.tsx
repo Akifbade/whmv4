@@ -1,7 +1,6 @@
-
 import React, { useState, useEffect, FormEvent } from 'react';
 import { useWMSData } from '../hooks/useWMSData';
-import { ChargeSetting, User, UserRole, AppSettings, CustomField } from '../types';
+import { ChargeSetting, User, UserRole, AppSettings, CustomField, UserStatus } from '../types';
 import { useSettings } from '../App';
 
 interface SettingsProps {
@@ -67,12 +66,21 @@ const ChargeSettings: React.FC<SettingsProps> = ({ showToast }) => {
 };
 
 const UserManagement: React.FC<SettingsProps> = ({ showToast }) => {
-    const { users, fetchUsers, deleteUser, inviteUser } = useWMSData();
+    const { users, fetchUsers, deleteUser, approveUser, inviteUser } = useWMSData();
     const [showInviteModal, setShowInviteModal] = useState(false);
 
     useEffect(() => {
         fetchUsers();
     }, [fetchUsers]);
+    
+    const handleApprove = async (userId: string) => {
+        try {
+            await approveUser(userId);
+            showToast('User has been approved and is now active.', 'success');
+        } catch (error: any) {
+            showToast(error.message, 'error');
+        }
+    };
     
     const handleDelete = async (userId: string) => {
         if (window.confirm('Are you sure you want to remove this user permanently?')) {
@@ -100,6 +108,7 @@ const UserManagement: React.FC<SettingsProps> = ({ showToast }) => {
                             <th className="px-4 py-2 text-left">Username</th>
                             <th className="px-4 py-2 text-left">Email</th>
                             <th className="px-4 py-2 text-left">Role</th>
+                            <th className="px-4 py-2 text-left">Status</th>
                             <th className="px-4 py-2 text-left">Actions</th>
                         </tr>
                     </thead>
@@ -110,7 +119,17 @@ const UserManagement: React.FC<SettingsProps> = ({ showToast }) => {
                                 <td className="px-4 py-2">{user.email}</td>
                                 <td className="px-4 py-2">{user.role}</td>
                                 <td className="px-4 py-2">
-                                    <button onClick={() => handleDelete(user.id)} className="px-3 py-1 text-sm bg-red-500 text-white rounded hover:bg-red-600">Remove</button>
+                                    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${user.status === UserStatus.Active ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                                      {user.status}
+                                    </span>
+                                </td>
+                                <td className="px-4 py-2 space-x-2">
+                                    {user.status === UserStatus.Pending && (
+                                         <button onClick={() => handleApprove(user.id)} className="px-3 py-1 text-sm bg-green-500 text-white rounded hover:bg-green-600">Approve</button>
+                                    )}
+                                    {user.role !== UserRole.Admin && (
+                                        <button onClick={() => handleDelete(user.id)} className="px-3 py-1 text-sm bg-red-500 text-white rounded hover:bg-red-600">Remove</button>
+                                    )}
                                 </td>
                             </tr>
                         ))}

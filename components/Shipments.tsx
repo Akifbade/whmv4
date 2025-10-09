@@ -1,4 +1,5 @@
 
+
 import React, { useState, FormEvent, useEffect } from 'react';
 import QRCode from 'react-qr-code';
 import { Shipment, UserRole, ShipmentStatus, Rack, Invoice, RackStatus, ChargeSetting, CustomField } from '../types';
@@ -88,12 +89,11 @@ const WarehouseHeatmapModal: React.FC<{
     onClose: () => void;
     onSelectRack: (rackId: string) => void;
 }> = ({ racks, onClose, onSelectRack }) => {
-    // FIX: Explicitly typed the accumulator `acc` to ensure `groupedRacks` has the correct type `Record<string, Rack[]>`.
-    // This prevents TypeScript from inferring `rackList` as `unknown`, which is not iterable and causes an error.
-    const groupedRacks = racks.reduce((acc: Record<string, Rack[]>, rack) => {
+    // FIX: The initial value for reduce must be typed to prevent TypeScript from inferring `rackList` as `unknown`, which can cause iterator errors.
+    const groupedRacks = racks.reduce((acc, rack) => {
         (acc[rack.rackLine] = acc[rack.rackLine] || []).push(rack);
         return acc;
-    }, {});
+    }, {} as Record<string, Rack[]>);
 
     const getStatusColor = (rack: Rack) => {
         if (rack.status === RackStatus.Full) return 'bg-red-500 cursor-not-allowed';

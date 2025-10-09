@@ -1,4 +1,3 @@
-
 import express from 'express';
 import mysql from 'mysql2/promise';
 import cors from 'cors';
@@ -15,7 +14,7 @@ dotenv.config();
 // to create all the necessary tables for the application to work.
 /*
 -- =================================================================
--- WMS DATABASE SETUP SCRIPT V2
+-- WMS DATABASE SETUP SCRIPT V3
 -- =================================================================
 -- Drop old tables in reverse order of dependency to avoid foreign key errors.
 DROP TABLE IF EXISTS `invoices`;
@@ -37,7 +36,7 @@ CREATE TABLE `users` (
   `email` varchar(255) NOT NULL,
   `password` varchar(255) NOT NULL,
   `role` enum('Admin','Supervisor','Worker','Billing') NOT NULL,
-  `status` enum('Pending','Active') NOT NULL DEFAULT 'Active',
+  `status` enum('Pending','Active') NOT NULL DEFAULT 'Pending',
   PRIMARY KEY (`id`),
   UNIQUE KEY `username` (`username`),
   UNIQUE KEY `email` (`email`)
@@ -220,6 +219,29 @@ const authorizeRoles = (...allowedRoles) => {
 };
 
 // --- AUTH ROUTES ---
+app.post('/api/auth/register', async (req, res) => {
+    const { username, email, password } = req.body;
+    if (!username || !email || !password) {
+        return res.status(400).json({ message: 'Username, email, and password are required.' });
+    }
+    try {
+        const hashedPassword = await bcrypt.hash(password, 10);
+        // New users are created with 'Worker' role and 'Pending' status by default
+        await db.execute(
+            'INSERT INTO users (username, email, password, role, status) VALUES (?, ?, ?, ?, ?)',
+            [username, email, hashedPassword, 'Worker', 'Pending']
+        );
+        res.status(201).json({ message: 'Registration successful! Your account is pending approval from an administrator.' });
+    } catch (error) {
+        if (error.code === 'ER_DUP_ENTRY') {
+            return res.status(409).json({ message: 'Username or email already exists.' });
+        }
+        console.error('Registration error:', error);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+});
+
+
 app.post('/api/auth/invite', authenticateToken, authorizeRoles('Admin'), async (req, res) => {
     const { email, role } = req.body;
     if (!email || !role) {
@@ -302,7 +324,7 @@ app.post('/api/auth/login', async (req, res) => {
         }
         const user = rows[0];
         if (user.status !== 'Active') {
-            return res.status(403).json({ message: 'Account is not active. Please contact an administrator.' });
+            return res.status(403).json({ message: 'Account is not active or is pending approval.' });
         }
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) {
@@ -323,6 +345,19 @@ app.get('/api/users', authenticateToken, authorizeRoles('Admin'), async (req, re
         res.json(users);
     } catch (error) {
         res.status(500).json({ message: 'Failed to fetch users' });
+    }
+});
+
+app.post('/api/users/:id/approve', authenticateToken, authorizeRoles('Admin'), async (req, res) => {
+    try {
+        const [result] = await db.execute('UPDATE users SET status = "Active" WHERE id = ?', [req.params.id]);
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ message: "User not found."});
+        }
+        res.json({ message: 'User approved successfully.' });
+    } catch (error) {
+        console.error("Error approving user:", error);
+        res.status(500).json({ message: 'Failed to approve user' });
     }
 });
 

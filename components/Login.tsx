@@ -1,8 +1,60 @@
 import React, { useState, FormEvent } from 'react';
 import { useAuth, Toast } from '../App';
 import { User } from '../types';
+import { AuthApi } from '../hooks/useWMSData';
 
 const API_BASE_URL = 'http://72.60.215.188:3001';
+
+const RegistrationModal: React.FC<{ onClose: () => void; showToast: (message: string, type: 'success' | 'error') => void; }> = ({ onClose, showToast }) => {
+    const [formData, setFormData] = useState({ username: '', email: '', password: '', confirmPassword: '' });
+    const [error, setError] = useState<string | null>(null);
+    const [isLoading, setIsLoading] = useState(false);
+
+    const handleSubmit = async (e: FormEvent) => {
+        e.preventDefault();
+        if (formData.password !== formData.confirmPassword) {
+            setError("Passwords do not match.");
+            return;
+        }
+        setIsLoading(true);
+        setError(null);
+        try {
+            const result = await AuthApi.register(formData);
+            showToast(result.message, 'success');
+            onClose();
+        } catch (err: any) {
+            setError(err.message);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+    
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
+    };
+
+    return (
+         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-8 max-w-md w-full">
+                <h3 className="text-2xl font-bold mb-6">Create New Account</h3>
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <input name="username" type="text" placeholder="Username" required value={formData.username} onChange={handleInputChange} className="block w-full px-3 py-2 border rounded-md dark:bg-gray-700" />
+                    <input name="email" type="email" placeholder="Email Address" required value={formData.email} onChange={handleInputChange} className="block w-full px-3 py-2 border rounded-md dark:bg-gray-700" />
+                    <input name="password" type="password" placeholder="Password" required value={formData.password} onChange={handleInputChange} className="block w-full px-3 py-2 border rounded-md dark:bg-gray-700" />
+                    <input name="confirmPassword" type="password" placeholder="Confirm Password" required value={formData.confirmPassword} onChange={handleInputChange} className="block w-full px-3 py-2 border rounded-md dark:bg-gray-700" />
+                    {error && <p className="text-sm text-red-500">{error}</p>}
+                    <div className="pt-4 flex justify-end space-x-4">
+                        <button type="button" onClick={onClose} className="px-6 py-2 bg-gray-200 dark:bg-gray-600 rounded-md">Cancel</button>
+                        <button type="submit" disabled={isLoading} className="px-6 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 disabled:opacity-50">
+                            {isLoading ? 'Registering...' : 'Register'}
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+};
+
 
 const Login: React.FC = () => {
     const [username, setUsername] = useState('');
@@ -10,6 +62,7 @@ const Login: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+    const [showRegisterModal, setShowRegisterModal] = useState(false);
     const { login } = useAuth();
 
     const showToast = (message: string, type: 'success' | 'error' = 'success') => {
@@ -43,6 +96,7 @@ const Login: React.FC = () => {
     return (
         <div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-gray-900">
             {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+            {showRegisterModal && <RegistrationModal onClose={() => setShowRegisterModal(false)} showToast={showToast} />}
             <div className="w-full max-w-md p-8 space-y-6 bg-white rounded-lg shadow-md dark:bg-gray-800">
                 <div className="flex justify-center">
                     <img src="http://qgocargo.com/logo.png" alt="Company Logo" className="h-16" />
@@ -68,6 +122,11 @@ const Login: React.FC = () => {
                         </button>
                     </div>
                 </form>
+                <div className="text-center">
+                    <a href="#" onClick={(e) => { e.preventDefault(); setShowRegisterModal(true); }} className="text-sm text-primary-600 dark:text-primary-400 hover:underline">
+                        Create an Account
+                    </a>
+                </div>
             </div>
         </div>
     );

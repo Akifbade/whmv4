@@ -151,6 +151,11 @@ export const useWMSData = () => {
             body: JSON.stringify({ email, role }),
         });
     };
+    
+    const approveUser = async (userId: string): Promise<void> => {
+        await apiFetch(`/users/${userId}/approve`, { method: 'POST' });
+        await fetchUsers(); // Refetch users to update status
+    };
 
     const deleteUser = async (userId: string): Promise<void> => {
         await apiFetch(`/users/${userId}`, { method: 'DELETE' });
@@ -204,12 +209,21 @@ export const useWMSData = () => {
         addShipment, releaseShipment, assignShipmentToRack, getInvoice,
         fetchChargeSettings, updateChargeSettings,
         addRack,
-        fetchUsers, inviteUser, deleteUser,
+        fetchUsers, inviteUser, approveUser, deleteUser,
         fetchAppSettings, updateAppSettings,
         fetchCustomFields, addCustomField,
         generateInventoryReport, generateTurnoverReport,
         refetch: fetchData 
     };
+};
+
+export const AuthApi = {
+    register: async (data: any) => {
+        return publicApiFetch('/auth/register', {
+            method: 'POST',
+            body: JSON.stringify(data),
+        });
+    },
 };
 
 export const RegistrationData = {
