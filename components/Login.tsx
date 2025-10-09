@@ -21,7 +21,11 @@ const RegistrationModal: React.FC<{ onClose: () => void; showToast: (message: st
             showToast(result.message, 'success');
             onClose();
         } catch (err: any) {
-            setError(err.message);
+            if (err.message.includes('Failed to fetch')) {
+                setError('Could not connect to the server. Please check your network connection or try again later.');
+            } else {
+                setError(err.message);
+            }
         } finally {
             setIsLoading(false);
         }
@@ -77,7 +81,11 @@ const Login: React.FC = () => {
             const { user, token } = data as { user: User, token: string };
             login(user, token);
         } catch (err: any) {
-            setError(err.message);
+            if (err.message.includes('Failed to fetch')) {
+                setError('Could not connect to the server. Please check your network connection.');
+            } else {
+                setError(err.message);
+            }
         } finally {
             setIsLoading(false);
         }
@@ -113,9 +121,9 @@ const Login: React.FC = () => {
                     </div>
                 </form>
                 <div className="text-center">
-                    <a href="#" onClick={(e) => { e.preventDefault(); setShowRegisterModal(true); }} className="text-sm text-primary-600 dark:text-primary-400 hover:underline">
+                    <button onClick={() => setShowRegisterModal(true)} className="text-sm text-primary-600 dark:text-primary-400 hover:underline bg-transparent border-none p-0">
                         Create an Account
-                    </a>
+                    </button>
                 </div>
             </div>
         </div>

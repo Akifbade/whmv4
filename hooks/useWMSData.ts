@@ -4,7 +4,7 @@ import { useAuth } from '../App';
 
 const API_BASE_URL = '/api';
 
-// This is a stand-alone fetch for public routes like registration
+// This is a stand-alone fetch for public routes like registration or login
 const publicApiFetch = async (url: string, options: RequestInit = {}) => {
     const response = await fetch(`${API_BASE_URL}${url}`, {
         ...options,
@@ -14,7 +14,7 @@ const publicApiFetch = async (url: string, options: RequestInit = {}) => {
         }
     });
     if (!response.ok) {
-        const errorData = await response.json();
+        const errorData = await response.json().catch(() => ({ message: `Server returned status ${response.status}` }));
         throw new Error(errorData.message || `API Error: ${response.status}`);
     }
     return response.json();
