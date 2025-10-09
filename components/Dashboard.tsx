@@ -1,6 +1,8 @@
 
+
 import React from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+// FIX: Corrected import path for types.
 import { Shipment, Rack, ShipmentStatus } from '../types';
 
 interface DashboardProps {

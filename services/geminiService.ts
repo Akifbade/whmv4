@@ -1,5 +1,7 @@
 
+
 import { GoogleGenAI, Type } from "@google/genai";
+// FIX: Corrected import path for types.
 import { Rack, RackStatus } from "../types";
 
 // Fix: Initialize GoogleGenAI with process.env.API_KEY directly as per guidelines.

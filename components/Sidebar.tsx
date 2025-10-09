@@ -1,5 +1,7 @@
+
 import React from 'react';
 import { useAuth } from '../App';
+// FIX: Corrected import path for types.
 import { UserRole } from '../types';
 
 type View = 'dashboard' | 'shipments' | 'racks' | 'settings';

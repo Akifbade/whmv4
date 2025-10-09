@@ -1,106 +1,149 @@
-import React, { useEffect, useState, FormEvent } from 'react';
+
+import React, { useState, useEffect, FormEvent } from 'react';
 import { useWMSData } from '../hooks/useWMSData';
-import { User, UserRole, ChargeSetting } from '../types';
+import { ChargeSetting, User, UserStatus } from '../types';
 
 interface SettingsProps {
-    showToast: (message: string, type: 'success' | 'error') => void;
+    showToast: (message: string, type?: 'success' | 'error') => void;
 }
 
-const Settings: React.FC<SettingsProps> = ({ showToast }) => {
-    const { users, fetchUsers, addUser, chargeSettings, fetchChargeSettings, addChargeSetting, deleteChargeSetting } = useWMSData();
-    const [newUser, setNewUser] = useState({ username: '', password: '', role: UserRole.Worker });
-    const [newCharge, setNewCharge] = useState({ name: '', rate: '', unit: 'flat fee' });
+const ChargeSettings: React.FC<SettingsProps> = ({ showToast }) => {
+    const { chargeSettings, fetchChargeSettings, updateChargeSettings } = useWMSData();
+    const [settings, setSettings] = useState<ChargeSetting[]>([]);
+    const [isLoading, setIsLoading] = useState(false);
+
+    useEffect(() => {
+        fetchChargeSettings();
+    }, [fetchChargeSettings]);
+    
+    useEffect(() => {
+        if (chargeSettings) setSettings(chargeSettings);
+    }, [chargeSettings]);
+
+    const handleInputChange = (id: number, field: 'rate', value: string) => {
+        setSettings(settings.map(s => s.id === id ? { ...s, [field]: parseFloat(value) || 0 } : s));
+    };
+
+    const handleSubmit = async (e: FormEvent) => {
+        e.preventDefault();
+        setIsLoading(true);
+        try {
+            await updateChargeSettings(settings);
+            showToast('Settings updated successfully!', 'success');
+        } catch (error: any) {
+            showToast(error.message || 'Failed to update settings.', 'error');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+    
+    return (
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-8">
+            <h3 className="text-xl font-semibold mb-4">Charge Settings</h3>
+            <p className="text-gray-600 dark:text-gray-400 mb-6">Configure rates for warehouse services.</p>
+            {settings.length === 0 ? <p>Loading settings...</p> : (
+                <form onSubmit={handleSubmit}>
+                    <div className="space-y-4">
+                        {settings.map(setting => (
+                            <div key={setting.id} className="grid grid-cols-3 gap-4 items-center">
+                                <label htmlFor={`rate-${setting.id}`} className="font-medium">{setting.name} ({setting.unit})</label>
+                                <input type="number" id={`rate-${setting.id}`} step="0.001" value={setting.rate}
+                                    onChange={(e) => handleInputChange(setting.id, 'rate', e.target.value)}
+                                    className="col-span-2 block w-full px-3 py-2 border rounded-md dark:bg-gray-700 focus:outline-none focus:ring-blue-500"
+                                />
+                            </div>
+                        ))}
+                    </div>
+                    <div className="mt-8 flex justify-end">
+                        <button type="submit" disabled={isLoading} className="px-6 py-2 leading-5 text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50">
+                            {isLoading ? 'Saving...' : 'Save Changes'}
+                        </button>
+                    </div>
+                </form>
+            )}
+        </div>
+    );
+};
+
+const UserManagement: React.FC<SettingsProps> = ({ showToast }) => {
+    const { users, fetchUsers, approveUser, deleteUser } = useWMSData();
 
     useEffect(() => {
         fetchUsers();
-        fetchChargeSettings();
-    }, [fetchUsers, fetchChargeSettings]);
+    }, [fetchUsers]);
 
-    const handleUserSubmit = async (e: FormEvent) => {
-        e.preventDefault();
+    const handleApprove = async (userId: string) => {
         try {
-            await addUser(newUser);
-            showToast('User created successfully.', 'success');
-            setNewUser({ username: '', password: '', role: UserRole.Worker });
+            await approveUser(userId);
+            showToast('User approved successfully.', 'success');
         } catch (error: any) {
             showToast(error.message, 'error');
         }
     };
     
-    const handleChargeSubmit = async (e: FormEvent) => {
-        e.preventDefault();
-        try {
-            await addChargeSetting({ ...newCharge, rate: parseFloat(newCharge.rate) });
-            showToast('Charge setting added.', 'success');
-            setNewCharge({ name: '', rate: '', unit: 'flat fee' });
-        } catch (error: any) {
-            showToast(error.message, 'error');
-        }
-    };
-
-    const handleChargeDelete = async (id: number) => {
-        if (window.confirm('Are you sure you want to delete this charge?')) {
+    const handleDecline = async (userId: string) => {
+        if (window.confirm('Are you sure you want to decline and delete this user?')) {
             try {
-                await deleteChargeSetting(id);
-                showToast('Charge setting deleted.', 'success');
+                await deleteUser(userId);
+                showToast('User declined and removed.', 'success');
             } catch (error: any) {
                 showToast(error.message, 'error');
             }
         }
     };
 
+    const pendingUsers = users.filter(u => u.status === UserStatus.Pending);
+    const activeUsers = users.filter(u => u.status === UserStatus.Active);
+    
+    return (
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-8">
+            <h3 className="text-xl font-semibold mb-4">User Management</h3>
+            <div className="mb-8">
+                <h4 className="text-lg font-medium mb-2">Pending Approvals</h4>
+                {pendingUsers.length > 0 ? (
+                    <ul className="divide-y dark:divide-gray-700">
+                        {pendingUsers.map(user => (
+                            <li key={user.id} className="py-2 flex justify-between items-center">
+                                <span>{user.username} ({user.role})</span>
+                                <div className="space-x-2">
+                                    <button onClick={() => handleApprove(user.id)} className="px-3 py-1 text-sm bg-green-500 text-white rounded hover:bg-green-600">Approve</button>
+                                    <button onClick={() => handleDecline(user.id)} className="px-3 py-1 text-sm bg-red-500 text-white rounded hover:bg-red-600">Decline</button>
+                                </div>
+                            </li>
+                        ))}
+                    </ul>
+                ) : <p className="text-gray-500">No users pending approval.</p>}
+            </div>
+            <div>
+                <h4 className="text-lg font-medium mb-2">Active Users</h4>
+                 {activeUsers.length > 0 ? (
+                    <ul className="divide-y dark:divide-gray-700">
+                        {activeUsers.map(user => (
+                            <li key={user.id} className="py-2 flex justify-between items-center">
+                                <span>{user.username} ({user.role})</span>
+                                <button onClick={() => handleDecline(user.id)} className="px-3 py-1 text-sm bg-gray-500 text-white rounded hover:bg-gray-600">Remove</button>
+                            </li>
+                        ))}
+                    </ul>
+                ) : <p className="text-gray-500">No active users.</p>}
+            </div>
+        </div>
+    );
+};
+
+
+const Settings: React.FC<SettingsProps> = ({ showToast }) => {
+    const [activeTab, setActiveTab] = useState('users');
     return (
         <div>
-            <h2 className="text-3xl font-bold mb-6">Admin Settings</h2>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                {/* User Management */}
-                <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-                    <h3 className="text-xl font-semibold mb-4">User Management</h3>
-                    <form onSubmit={handleUserSubmit} className="space-y-4 mb-6">
-                        <input type="text" placeholder="Username" value={newUser.username} onChange={e => setNewUser({...newUser, username: e.target.value})} className="w-full p-2 border rounded dark:bg-gray-700" required />
-                        <input type="password" placeholder="Password" value={newUser.password} onChange={e => setNewUser({...newUser, password: e.target.value})} className="w-full p-2 border rounded dark:bg-gray-700" required />
-                        <select value={newUser.role} onChange={e => setNewUser({...newUser, role: e.target.value as UserRole})} className="w-full p-2 border rounded dark:bg-gray-700">
-                            {Object.values(UserRole).map(role => <option key={role} value={role}>{role}</option>)}
-                        </select>
-                        <button type="submit" className="w-full py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Add User</button>
-                    </form>
-                    <div className="space-y-2">
-                        {users.map(user => (
-                            <div key={user.id} className="flex justify-between items-center p-2 bg-gray-100 dark:bg-gray-700 rounded">
-                                <span>{user.username}</span>
-                                <span className="text-sm font-medium px-2 py-1 bg-blue-200 text-blue-800 rounded-full">{user.role}</span>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-
-                {/* Billing Settings */}
-                <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-                    <h3 className="text-xl font-semibold mb-4">Billing Configuration (Currency: KWD)</h3>
-                     <form onSubmit={handleChargeSubmit} className="space-y-4 mb-6">
-                        <input type="text" placeholder="Charge Name" value={newCharge.name} onChange={e => setNewCharge({...newCharge, name: e.target.value})} className="w-full p-2 border rounded dark:bg-gray-700" required />
-                        <input type="number" step="0.001" placeholder="Rate (e.g., 10.000)" value={newCharge.rate} onChange={e => setNewCharge({...newCharge, rate: e.target.value})} className="w-full p-2 border rounded dark:bg-gray-700" required />
-                        <select value={newCharge.unit} onChange={e => setNewCharge({...newCharge, unit: e.target.value})} className="w-full p-2 border rounded dark:bg-gray-700">
-                            <option value="flat fee">Flat Fee</option>
-                            <option value="per day">Per Day</option>
-                            <option value="per hour">Per Hour</option>
-                            <option value="per kg">Per KG</option>
-                        </select>
-                        <button type="submit" className="w-full py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Add Charge Type</button>
-                    </form>
-                    <div className="space-y-2">
-                        {chargeSettings.map(charge => (
-                             <div key={charge.id} className="flex justify-between items-center p-2 bg-gray-100 dark:bg-gray-700 rounded">
-                                <div>
-                                    <span className="font-semibold">{charge.name}</span>
-                                    <span className="text-sm text-gray-500 dark:text-gray-400 ml-2">{charge.rate.toFixed(3)} KWD / {charge.unit}</span>
-                                </div>
-                                <button onClick={() => handleChargeDelete(charge.id)} className="text-red-500 hover:text-red-700">&times;</button>
-                            </div>
-                        ))}
-                    </div>
-                </div>
+            <h2 className="text-3xl font-bold mb-6">Settings</h2>
+            <div className="flex border-b mb-6">
+                <button onClick={() => setActiveTab('users')} className={`px-4 py-2 text-lg font-medium ${activeTab === 'users' ? 'border-b-2 border-blue-500 text-blue-500' : 'text-gray-500'}`}>User Management</button>
+                <button onClick={() => setActiveTab('charges')} className={`px-4 py-2 text-lg font-medium ${activeTab === 'charges' ? 'border-b-2 border-blue-500 text-blue-500' : 'text-gray-500'}`}>Charge Settings</button>
             </div>
+
+            {activeTab === 'users' && <UserManagement showToast={showToast} />}
+            {activeTab === 'charges' && <ChargeSettings showToast={showToast} />}
         </div>
     );
 };

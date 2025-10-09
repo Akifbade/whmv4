@@ -1,7 +1,40 @@
+
+export enum UserRole {
+  Admin = 'Admin',
+  Supervisor = 'Supervisor',
+  Worker = 'Worker',
+  Billing = 'Billing',
+}
+
+export enum UserStatus {
+  Pending = 'Pending',
+  Active = 'Active',
+}
+
+export interface User {
+  id: string;
+  username: string;
+  role: UserRole;
+  status: UserStatus;
+}
+
 export enum ShipmentStatus {
   Intake = 'Intake',
   Stored = 'Stored',
   Released = 'Released',
+}
+
+export interface Shipment {
+  id: string;
+  shipper: string;
+  consignee: string;
+  weight: number;
+  pieces: number;
+  arrivalDate: string;
+  releaseDate?: string;
+  status: ShipmentStatus;
+  rackId?: string;
+  invoiceId?: number; // Backend uses int
 }
 
 export enum RackStatus {
@@ -10,59 +43,35 @@ export enum RackStatus {
   Full = 'Full',
 }
 
-export enum UserRole {
-    Admin = 'Admin',
-    Supervisor = 'Supervisor',
-    Worker = 'Worker',
-    Billing = 'Billing',
-}
-
-export interface User {
-    id: number;
-    username: string;
-    role: UserRole;
-}
-
-export interface Shipment {
-  id: string;
-  shipper: string;
-  consignee: string;
-  weight: number; // in kg
-  pieces: number;
-  arrivalDate: string;
-  releaseDate?: string;
-  status: ShipmentStatus;
-  rackId?: string;
-  invoiceId?: number;
-}
-
 export interface Rack {
   id: string;
   rackLine: string;
   slot: string;
-  status: RackStatus;
   capacity: number;
   currentLoad: number;
+  status: RackStatus;
 }
 
 export interface ChargeSetting {
-    id: number;
+    id: number; // Backend uses int
     name: string;
     rate: number;
     unit: string;
 }
 
+export interface InvoiceChargeDetail {
+    name: string;
+    rate: number;
+    quantity: number;
+    unit: string;
+    total: number;
+}
+
 export interface Invoice {
-    id: number;
+    id: number; // Backend uses int
     shipmentId: string;
     releaseDate: string;
-    chargeDetails: Array<{
-        name: string;
-        rate: number;
-        unit: string;
-        quantity: number;
-        total: number;
-    }>;
+    chargeDetails: InvoiceChargeDetail[];
     totalAmount: number;
     currency: string;
 }

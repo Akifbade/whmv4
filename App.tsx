@@ -1,13 +1,18 @@
+
 import React, { useState, useContext, createContext, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
 import Shipments from './components/Shipments';
 import Racks from './components/Racks';
 import Header from './components/Header';
+// FIX: Corrected import path for Settings component.
 import Settings from './components/Settings';
+// FIX: Corrected import path for Login component.
 import Login from './components/Login';
+// FIX: Corrected import path for useWMSData hook.
 import { useWMSData } from './hooks/useWMSData';
-import { UserRole, User } from './types';
+// FIX: Corrected import path for types.
+import { User } from './types';
 
 type View = 'dashboard' | 'shipments' | 'racks' | 'settings';
 

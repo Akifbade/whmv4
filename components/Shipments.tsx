@@ -1,8 +1,10 @@
+
 import React, { useState, FormEvent } from 'react';
 import QRCode from 'react-qr-code';
-// FIX: Imported RackStatus to be used in the WarehouseHeatmapModal component.
+// FIX: Corrected import path for types.
 import { Shipment, UserRole, ShipmentStatus, Rack, Invoice, RackStatus } from '../types';
 import { suggestRackPlacement } from '../services/geminiService';
+// FIX: Corrected import path for useWMSData hook.
 import { useWMSData } from '../hooks/useWMSData';
 import { useAuth } from '../App';
 

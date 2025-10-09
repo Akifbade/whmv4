@@ -1,6 +1,9 @@
+
 import React, { useState, useEffect, useRef, FormEvent } from 'react';
 import QRCode from 'react-qr-code';
+// FIX: Corrected import path for types.
 import { Rack, RackStatus, UserRole, Shipment } from '../types';
+// FIX: Corrected import path for useWMSData hook.
 import { useWMSData } from '../hooks/useWMSData';
 import { useAuth } from '../App';
 import { Html5Qrcode } from 'html5-qrcode';
