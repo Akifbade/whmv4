@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Shipment, Rack, Invoice, ChargeSetting, User } from '../types';
 import { useAuth } from '../App';
 
-const API_BASE_URL = '/api';
+const API_BASE_URL = 'http://localhost:3001/api';
 
 export const useWMSData = () => {
     const { token } = useAuth();

@@ -3,6 +3,8 @@ import React, { useState, FormEvent } from 'react';
 import { useAuth } from '../App';
 import { User } from '../types';
 
+const API_BASE_URL = 'http://localhost:3001';
+
 const RegistrationModal: React.FC<{
     onClose: () => void;
     showToast: (message: string, type?: 'success' | 'error') => void;
@@ -20,7 +22,7 @@ const RegistrationModal: React.FC<{
         }
         setError(null);
         try {
-            const response = await fetch('/api/auth/register', {
+            const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username, password, role: 'Worker' }), // Default role is Worker
@@ -77,7 +79,7 @@ const Login: React.FC = () => {
         setIsLoading(true);
         setError(null);
         try {
-            const response = await fetch('/api/auth/login', {
+            const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username, password }),
