@@ -12,7 +12,7 @@ interface DashboardProps {
 
 const StatCard: React.FC<{ title: string; value: string | number; icon: React.ReactNode }> = ({ title, value, icon }) => (
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 flex items-center space-x-4">
-        <div className="p-3 rounded-full bg-blue-100 dark:bg-blue-900 text-blue-500">
+        <div className="p-3 rounded-full bg-primary-100 dark:bg-primary-900 text-primary-500">
             {icon}
         </div>
         <div>
@@ -70,7 +70,7 @@ const Dashboard: React.FC<DashboardProps> = ({ shipments, racks }) => {
                 <YAxis />
                 <Tooltip contentStyle={{ backgroundColor: '#334155', border: 'none', borderRadius: '0.5rem' }}/>
                 <Legend />
-                <Bar dataKey="intake" fill="#3b82f6" />
+                <Bar dataKey="intake" fill="var(--color-primary-500)" />
                 <Bar dataKey="release" fill="#84cc16" />
                 </BarChart>
             </ResponsiveContainer>

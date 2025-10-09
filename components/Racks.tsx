@@ -1,9 +1,7 @@
 
 import React, { useState, useEffect, useRef, FormEvent } from 'react';
 import QRCode from 'react-qr-code';
-// FIX: Corrected import path for types.
 import { Rack, RackStatus, UserRole, Shipment } from '../types';
-// FIX: Corrected import path for useWMSData hook.
 import { useWMSData } from '../hooks/useWMSData';
 import { useAuth } from '../App';
 import { Html5Qrcode } from 'html5-qrcode';
@@ -77,7 +75,7 @@ const Scanner: React.FC<{ onAssign: (shipmentId: string, rackId: string) => void
     return (
         <div className="p-4 border border-gray-300 dark:border-gray-600 rounded-lg">
             <div id={scannerContainerId} style={{ width: '100%', maxWidth: '500px', margin: '0 auto' }}></div>
-            <p className="mt-4 text-center font-semibold text-blue-600 dark:text-blue-400">{message}</p>
+            <p className="mt-4 text-center font-semibold text-primary-600 dark:text-primary-400">{message}</p>
         </div>
     );
 };
@@ -109,7 +107,7 @@ const PrintRackQrModal: React.FC<{ racks: Rack[]; onClose: () => void }> = ({ ra
                 </div>
                 <div className="mt-6 pt-4 border-t flex justify-end space-x-4">
                     <button onClick={handlePrint} className="px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700">Print</button>
-                    <button onClick={onClose} className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Close</button>
+                    <button onClick={onClose} className="px-6 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700">Close</button>
                 </div>
             </div>
         </div>
@@ -151,7 +149,7 @@ const AddRackModal: React.FC<{
                     </div>
                     <div className="mt-8 flex justify-end space-x-4">
                         <button type="button" onClick={onClose} className="px-6 py-2 bg-gray-200 dark:bg-gray-600 rounded-md">Cancel</button>
-                        <button type="submit" className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Create Rack</button>
+                        <button type="submit" className="px-6 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700">Create Rack</button>
                     </div>
                 </form>
             </div>
@@ -165,11 +163,12 @@ const Racks: React.FC<RacksProps> = ({ racks, shipments, addRack, assignShipment
   const [showRackQrModal, setShowRackQrModal] = useState(false);
   const [showAddRackModal, setShowAddRackModal] = useState(false);
   
-  const groupedRacks = racks.reduce((acc, rack) => {
-    if (!acc[rack.rackLine]) acc[rack.rackLine] = [];
-    acc[rack.rackLine].push(rack);
+  // FIX: Explicitly typed the accumulator `acc` to ensure `groupedRacks` has the correct type `Record<string, Rack[]>`.
+  // This prevents TypeScript from inferring `rackList` as `unknown`, which is not iterable and causes an error.
+  const groupedRacks = racks.reduce((acc: Record<string, Rack[]>, rack) => {
+    (acc[rack.rackLine] = acc[rack.rackLine] || []).push(rack);
     return acc;
-  }, {} as Record<string, Rack[]>);
+  }, {});
 
   const handleAssignment = async (shipmentId: string, rackId: string) => {
     try {
@@ -189,7 +188,7 @@ const Racks: React.FC<RacksProps> = ({ racks, shipments, addRack, assignShipment
         <div className="flex items-center space-x-4">
             {hasAccess([UserRole.Admin, UserRole.Supervisor]) && <button onClick={() => setShowAddRackModal(true)} className="px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700">Create New Rack</button>}
             {hasAccess([UserRole.Admin, UserRole.Supervisor]) && <button onClick={() => setShowRackQrModal(true)} className="px-6 py-2 bg-gray-200 dark:bg-gray-700 rounded-md">Generate Rack QR Codes</button>}
-            {hasAccess([UserRole.Admin, UserRole.Worker]) && <button onClick={() => setShowScanner(!showScanner)} className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">{showScanner ? 'Close Scanner' : 'Open QR Scanner'}</button>}
+            {hasAccess([UserRole.Admin, UserRole.Worker]) && <button onClick={() => setShowScanner(!showScanner)} className="px-6 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700">{showScanner ? 'Close Scanner' : 'Open QR Scanner'}</button>}
         </div>
       </div>
 
@@ -198,11 +197,11 @@ const Racks: React.FC<RacksProps> = ({ racks, shipments, addRack, assignShipment
       {showAddRackModal && <AddRackModal addRack={addRack} onClose={() => setShowAddRackModal(false)} showToast={showToast} />}
 
       <div className="space-y-8">
-        {Object.entries(groupedRacks).map(([rackLine, rackList]) => (
+        {Object.entries(groupedRacks).sort((a, b) => a[0].localeCompare(b[0])).map(([rackLine, rackList]) => (
           <div key={rackLine} className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
             <h3 className="text-xl font-semibold mb-4 border-b pb-2">{rackLine}</h3>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-              {rackList.sort((a,b) => a.slot.localeCompare(b.slot)).map(rack => (
+              {[...rackList].sort((a,b) => a.slot.localeCompare(b.slot)).map(rack => (
                 <RackCard key={rack.id} rack={rack} shipments={shipments} />
               ))}
             </div>

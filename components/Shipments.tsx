@@ -1,27 +1,64 @@
 
-import React, { useState, FormEvent } from 'react';
+import React, { useState, FormEvent, useEffect } from 'react';
 import QRCode from 'react-qr-code';
-// FIX: Corrected import path for types.
-import { Shipment, UserRole, ShipmentStatus, Rack, Invoice, RackStatus } from '../types';
-import { suggestRackPlacement } from '../services/geminiService';
-// FIX: Corrected import path for useWMSData hook.
+import { Shipment, UserRole, ShipmentStatus, Rack, Invoice, RackStatus, ChargeSetting, CustomField } from '../types';
 import { useWMSData } from '../hooks/useWMSData';
 import { useAuth } from '../App';
+import InvoiceModal from './InvoiceModal';
 
 interface ShipmentsProps extends ReturnType<typeof useWMSData> {
   showToast: (message: string, type: 'success' | 'error') => void;
 }
 
 const PrintLabelsModal: React.FC<{ shipment: Shipment; onClose: () => void }> = ({ shipment, onClose }) => {
-    // This modal's print functionality remains largely the same
     const handlePrint = () => {
         const printContents = document.getElementById('printable-labels-area')?.innerHTML;
         const originalContents = document.body.innerHTML;
+        const styles = Array.from(document.styleSheets)
+            .map(styleSheet => {
+                try {
+                    return Array.from(styleSheet.cssRules)
+                        .map(rule => rule.cssText)
+                        .join('');
+                } catch (e) {
+                    console.warn('Cannot read cross-origin stylesheet');
+                    return '';
+                }
+            })
+            .join('\n');
+            
         if (printContents) {
-            document.body.innerHTML = `<div class="print-container">${printContents}</div>`;
-            window.print();
-            document.body.innerHTML = originalContents;
-            window.location.reload();
+            const printWindow = window.open('', '', 'height=600,width=800');
+            printWindow?.document.write('<html><head><title>Print Labels</title>');
+            printWindow?.document.write('<style>');
+            printWindow?.document.write(styles);
+            printWindow?.document.write(`
+                @media print {
+                    body { -webkit-print-color-adjust: exact; }
+                    .label-container { 
+                        page-break-inside: avoid; 
+                        border: 1px solid #ccc !important;
+                        padding: 1rem !important;
+                        background-color: #f9fafb !important;
+                        border-radius: 0.5rem !important;
+                        display: flex !important;
+                        flex-direction: column !important;
+                        align-items: center !important;
+                        text-align: center !important;
+                    }
+                    .qr-wrapper { background-color: white !important; padding: 0.5rem !important; border-radius: 0.25rem !important; }
+                }
+                .print-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; }
+            `);
+            printWindow?.document.write('</style></head><body>');
+            printWindow?.document.write(`<div class="print-grid">${printContents}</div>`);
+            printWindow?.document.write('</body></html>');
+            printWindow?.document.close();
+            printWindow?.focus();
+            setTimeout(() => {
+                printWindow?.print();
+                printWindow?.close();
+            }, 250);
         }
     };
     return (
@@ -30,8 +67,8 @@ const PrintLabelsModal: React.FC<{ shipment: Shipment; onClose: () => void }> = 
                 <h3 className="text-2xl font-bold mb-6 text-gray-800 dark:text-white">Print Labels for Shipment {shipment.id}</h3>
                 <div id="printable-labels-area" className="overflow-y-auto grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 p-2">
                     {Array.from({ length: shipment.pieces }).map((_, index) => (
-                        <div key={index} className="flex flex-col items-center text-center p-4 bg-gray-100 dark:bg-gray-700 rounded-lg border border-gray-300 dark:border-gray-600">
-                            <div className="p-2 bg-white rounded-md"><QRCode value={JSON.stringify({ shipmentId: shipment.id })} size={128} /></div>
+                        <div key={index} className="label-container flex flex-col items-center text-center p-4 bg-gray-100 dark:bg-gray-700 rounded-lg border border-gray-300 dark:border-gray-600">
+                            <div className="qr-wrapper p-2 bg-white rounded-md"><QRCode value={JSON.stringify({ shipmentId: shipment.id })} size={128} /></div>
                             <p className="mt-2 font-semibold text-gray-800 dark:text-gray-200">{shipment.id}</p>
                             <p className="text-sm text-gray-600 dark:text-gray-400">Piece {index + 1} of {shipment.pieces}</p>
                         </div>
@@ -39,7 +76,7 @@ const PrintLabelsModal: React.FC<{ shipment: Shipment; onClose: () => void }> = 
                 </div>
                 <div className="mt-6 pt-4 border-t dark:border-gray-600 flex justify-end items-center space-x-4">
                     <button onClick={handlePrint} className="px-6 py-2 leading-5 text-white transition-colors duration-200 transform bg-green-600 rounded-md hover:bg-green-700">Print</button>
-                    <button onClick={onClose} className="px-6 py-2 leading-5 text-white transition-colors duration-200 transform bg-blue-600 rounded-md hover:bg-blue-700">Close</button>
+                    <button onClick={onClose} className="px-6 py-2 leading-5 text-white transition-colors duration-200 transform bg-primary-600 rounded-md hover:bg-primary-700">Close</button>
                 </div>
             </div>
         </div>
@@ -51,11 +88,12 @@ const WarehouseHeatmapModal: React.FC<{
     onClose: () => void;
     onSelectRack: (rackId: string) => void;
 }> = ({ racks, onClose, onSelectRack }) => {
-    const groupedRacks = racks.reduce((acc, rack) => {
-        if (!acc[rack.rackLine]) acc[rack.rackLine] = [];
-        acc[rack.rackLine].push(rack);
+    // FIX: Explicitly typed the accumulator `acc` to ensure `groupedRacks` has the correct type `Record<string, Rack[]>`.
+    // This prevents TypeScript from inferring `rackList` as `unknown`, which is not iterable and causes an error.
+    const groupedRacks = racks.reduce((acc: Record<string, Rack[]>, rack) => {
+        (acc[rack.rackLine] = acc[rack.rackLine] || []).push(rack);
         return acc;
-    }, {} as Record<string, Rack[]>);
+    }, {});
 
     const getStatusColor = (rack: Rack) => {
         if (rack.status === RackStatus.Full) return 'bg-red-500 cursor-not-allowed';
@@ -68,11 +106,11 @@ const WarehouseHeatmapModal: React.FC<{
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-6xl w-full max-h-[90vh] flex flex-col">
                 <h3 className="text-2xl font-bold mb-4">Warehouse Heatmap - Select a Rack</h3>
                 <div className="overflow-auto space-y-6">
-                    {Object.entries(groupedRacks).map(([line, rackList]) => (
+                    {Object.entries(groupedRacks).sort((a, b) => a[0].localeCompare(b[0])).map(([line, rackList]) => (
                         <div key={line}>
                             <h4 className="font-semibold text-lg mb-2">{line}</h4>
                             <div className="flex flex-wrap gap-2">
-                                {rackList.sort((a,b) => a.slot.localeCompare(b.slot)).map(rack => (
+                                {[...rackList].sort((a,b) => a.slot.localeCompare(b.slot)).map(rack => (
                                     <button 
                                         key={rack.id}
                                         disabled={rack.status === RackStatus.Full}
@@ -93,103 +131,76 @@ const WarehouseHeatmapModal: React.FC<{
     );
 };
 
-const InvoiceModal: React.FC<{
-    shipment: Shipment;
-    invoice: Invoice | null;
-    onClose: () => void;
-}> = ({ shipment, invoice, onClose }) => {
-    if (!invoice) return null;
-    return (
-         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4">
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-8 max-w-2xl w-full text-gray-800 dark:text-gray-200">
-                <h3 className="text-3xl font-bold mb-4 text-center">Tax Invoice</h3>
-                <p className="text-center mb-6">Invoice #{invoice.id}</p>
-                <div className="grid grid-cols-2 gap-4 mb-6">
-                    <div><strong>Shipment ID:</strong> {shipment.id}</div>
-                    <div><strong>Release Date:</strong> {new Date(invoice.releaseDate).toLocaleDateString()}</div>
-                    <div><strong>Shipper:</strong> {shipment.shipper}</div>
-                    <div><strong>Consignee:</strong> {shipment.consignee}</div>
-                </div>
-                <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700 mb-6">
-                    <thead className="bg-gray-50 dark:bg-gray-700">
-                        <tr>
-                            <th className="px-4 py-2 text-left">Service</th>
-                            <th className="px-4 py-2 text-right">Rate</th>
-                            <th className="px-4 py-2 text-right">Quantity</th>
-                            <th className="px-4 py-2 text-right">Total</th>
-                        </tr>
-                    </thead>
-                    <tbody className="bg-white dark:bg-gray-800">
-                        {invoice.chargeDetails.map(item => (
-                            <tr key={item.name}>
-                                <td className="px-4 py-2">{item.name}</td>
-                                <td className="px-4 py-2 text-right">{item.rate.toFixed(3)} {invoice.currency}</td>
-                                <td className="px-4 py-2 text-right">{item.quantity} {item.unit}</td>
-                                <td className="px-4 py-2 text-right">{item.total.toFixed(3)} {invoice.currency}</td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-                <div className="text-right text-2xl font-bold">
-                    Total: {invoice.totalAmount.toFixed(3)} {invoice.currency}
-                </div>
-                 <div className="mt-8 flex justify-end space-x-4">
-                    <button onClick={() => window.print()} className="px-6 py-2 text-white bg-green-600 rounded-md hover:bg-green-700">Print</button>
-                    <button onClick={onClose} className="px-6 py-2 text-white bg-blue-600 rounded-md hover:bg-blue-700">Close</button>
-                </div>
-            </div>
-        </div>
-    );
-};
 
 const ReleaseModal: React.FC<{
     shipment: Shipment;
-    chargeSettings: any[];
+    chargeSettings: ChargeSetting[];
     onClose: () => void;
-    onConfirm: (chargeOverrides: any) => void;
+    onConfirm: (charges: { chargeId: number, quantity: number }[]) => void;
 }> = ({ shipment, chargeSettings, onClose, onConfirm }) => {
-    const [overrides, setOverrides] = useState<any>({});
-    const durationDays = Math.ceil((new Date().getTime() - new Date(shipment.arrivalDate).getTime()) / (1000 * 3600 * 24));
+    const durationDays = Math.max(1, Math.ceil((new Date().getTime() - new Date(shipment.arrivalDate).getTime()) / (1000 * 3600 * 24)));
+    
+    // Initialize with storage charge
+    const storageSetting = chargeSettings.find(s => s.name === 'Storage');
+    const initialCharges = storageSetting ? [{ chargeId: storageSetting.id, quantity: durationDays, name: storageSetting.name, rate: storageSetting.rate, unit: storageSetting.unit }] : [];
+    
+    const [charges, setCharges] = useState(initialCharges);
 
-    const handleOverrideChange = (name: string, field: 'rate' | 'value', value: string) => {
-        setOverrides(prev => ({
-            ...prev,
-            [name]: { ...prev[name], [field]: parseFloat(value) }
-        }));
+    const handleQuantityChange = (chargeId: number, quantity: string) => {
+        setCharges(prev => prev.map(c => c.chargeId === chargeId ? { ...c, quantity: parseInt(quantity, 10) || 0 } : c));
+    };
+
+    const handleAddCharge = (setting: ChargeSetting) => {
+        if (!charges.some(c => c.chargeId === setting.id)) {
+            setCharges(prev => [...prev, { ...setting, quantity: 1 }]);
+        }
+    };
+    
+    const handleRemoveCharge = (chargeId: number) => {
+        setCharges(prev => prev.filter(c => c.chargeId !== chargeId));
     };
 
     const calculateTotal = () => {
-        return chargeSettings.reduce((total, setting) => {
-            const override = overrides[setting.name] || {};
-            const rate = override.rate ?? setting.rate;
-            let quantity = 1;
-            if (setting.unit === 'per day') quantity = durationDays;
-            quantity = override.value ?? quantity;
-            return total + (rate * quantity);
-        }, 0);
-    }
+        return charges.reduce((total, charge) => total + (charge.rate * charge.quantity), 0);
+    };
     
+    const availableCharges = chargeSettings.filter(setting => !charges.some(c => c.chargeId === setting.id));
+
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4">
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-8 max-w-2xl w-full">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-8 max-w-3xl w-full">
                 <h3 className="text-2xl font-bold mb-4">Release Shipment {shipment.id}</h3>
-                <p className="mb-6">Review and confirm charges before releasing.</p>
-                <div className="space-y-2">
-                    {chargeSettings.map(setting => (
-                         <div key={setting.id} className="grid grid-cols-4 gap-2 items-center">
-                            <span>{setting.name}</span>
-                            <input type="number" step="0.001" value={overrides[setting.name]?.rate ?? setting.rate} onChange={e => handleOverrideChange(setting.name, 'rate', e.target.value)} className="w-full p-1 border rounded dark:bg-gray-700"/>
-                            <input type="number" value={overrides[setting.name]?.value ?? (setting.unit === 'per day' ? durationDays : 1)} onChange={e => handleOverrideChange(setting.name, 'value', e.target.value)} className="w-full p-1 border rounded dark:bg-gray-700" />
-                            <span>{setting.unit}</span>
-                         </div>
+                <p className="mb-6">Confirm charges before releasing. Storage duration: {durationDays} days.</p>
+                <div className="space-y-3 max-h-64 overflow-y-auto pr-2">
+                    {charges.map(charge => (
+                        <div key={charge.chargeId} className="grid grid-cols-12 gap-3 items-center">
+                            <span className="col-span-4">{charge.name}</span>
+                            <span className="col-span-2 text-right">{charge.rate.toFixed(3)}</span>
+                            <input type="number" value={charge.quantity} onChange={e => handleQuantityChange(charge.chargeId, e.target.value)} className="col-span-2 p-1 border rounded dark:bg-gray-700"/>
+                            <span className="col-span-2">{charge.unit}</span>
+                            <span className="col-span-1 text-right font-semibold">{(charge.rate * charge.quantity).toFixed(3)}</span>
+                            <button onClick={() => handleRemoveCharge(charge.chargeId)} className="col-span-1 text-red-500 hover:text-red-700">
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                            </button>
+                        </div>
                     ))}
+                </div>
+                 <div className="mt-4 pt-4 border-t dark:border-gray-600">
+                    {availableCharges.length > 0 && (
+                        <div className="flex items-center gap-2">
+                            <select onChange={(e) => handleAddCharge(JSON.parse(e.target.value))} className="p-2 border rounded dark:bg-gray-700">
+                                <option>Add another charge...</option>
+                                {availableCharges.map(s => <option key={s.id} value={JSON.stringify(s)}>{s.name}</option>)}
+                            </select>
+                        </div>
+                    )}
                 </div>
                 <div className="mt-4 text-right font-bold text-xl">
                     Total: {calculateTotal().toFixed(3)} KWD
                 </div>
                 <div className="mt-8 flex justify-end space-x-4">
                     <button onClick={onClose} className="px-6 py-2 bg-gray-300 dark:bg-gray-600 rounded-md">Cancel</button>
-                    <button onClick={() => onConfirm(overrides)} className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Confirm & Release</button>
+                    <button onClick={() => onConfirm(charges.map(({chargeId, quantity}) => ({chargeId, quantity})))} className="px-6 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700">Confirm & Release</button>
                 </div>
             </div>
         </div>
@@ -197,7 +208,7 @@ const ReleaseModal: React.FC<{
 }
 
 
-const Shipments: React.FC<ShipmentsProps> = ({ shipments, racks, addShipment, releaseShipment, assignShipmentToRack, getInvoice, chargeSettings, fetchChargeSettings, showToast }) => {
+const Shipments: React.FC<ShipmentsProps> = ({ shipments, racks, addShipment, releaseShipment, assignShipmentToRack, getInvoice, chargeSettings, fetchChargeSettings, customFields, fetchCustomFields, showToast }) => {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('all');
   const [selectedShipment, setSelectedShipment] = useState<Shipment | null>(null);
@@ -205,11 +216,16 @@ const Shipments: React.FC<ShipmentsProps> = ({ shipments, racks, addShipment, re
   const [shipmentToAssign, setShipmentToAssign] = useState<Shipment | null>(null);
   const [shipmentToPrint, setShipmentToPrint] = useState<Shipment | null>(null);
   const [invoiceToShow, setInvoiceToShow] = useState<Invoice | null>(null);
-  const [formData, setFormData] = useState({ shipper: '', consignee: '', weight: '', pieces: '' });
-  const [isLoadingSuggestion, setIsLoadingSuggestion] = useState(false);
-  const [suggestion, setSuggestion] = useState<string | null>(null);
+  const initialFormState = { shipper: '', consignee: '', weight: '', pieces: '', commodity: '', dimensions: '', notes: '', expectedDate: '' };
+  const [formData, setFormData] = useState(initialFormState);
+  const [customFieldData, setCustomFieldData] = useState<Record<number, string | number>>({});
   
-  React.useEffect(() => { if (user?.role === 'Admin') fetchChargeSettings() }, [user, fetchChargeSettings]);
+  useEffect(() => { 
+      if (user?.role === 'Admin') {
+        fetchChargeSettings();
+        fetchCustomFields();
+      }
+  }, [user, fetchChargeSettings, fetchCustomFields]);
 
   const hasAccess = (requiredRoles: UserRole[]) => user && requiredRoles.includes(user.role);
 
@@ -218,21 +234,24 @@ const Shipments: React.FC<ShipmentsProps> = ({ shipments, racks, addShipment, re
     const newShipmentData = {
         shipper: formData.shipper, consignee: formData.consignee,
         weight: parseFloat(formData.weight), pieces: parseInt(formData.pieces, 10),
+        commodity: formData.commodity, dimensions: formData.dimensions,
+        notes: formData.notes, expectedDate: formData.expectedDate,
+        customFields: customFieldData
     };
     try {
         const createdShipment = await addShipment(newShipmentData);
-        setFormData({ shipper: '', consignee: '', weight: '', pieces: '' });
-        setSuggestion(null);
+        setFormData(initialFormState);
+        setCustomFieldData({});
         setShipmentToPrint(createdShipment);
         setActiveTab('all');
         showToast(`Shipment ${createdShipment.id} created successfully.`, 'success');
     } catch(error: any) { showToast(error.message, 'error'); }
   };
   
-  const handleConfirmRelease = async (chargeOverrides: any) => {
+  const handleConfirmRelease = async (charges: { chargeId: number, quantity: number }[]) => {
       if (!shipmentToRelease) return;
       try {
-        await releaseShipment(shipmentToRelease.id, chargeOverrides);
+        await releaseShipment(shipmentToRelease.id, charges);
         showToast(`Shipment ${shipmentToRelease.id} released.`, 'success');
         setShipmentToRelease(null);
       } catch (error: any) { showToast(error.message, 'error'); }
@@ -265,13 +284,27 @@ const Shipments: React.FC<ShipmentsProps> = ({ shipments, racks, addShipment, re
       return s.status !== ShipmentStatus.Released;
   });
 
+  const renderCustomFields = () => customFields.map(field => {
+      const inputType = field.type === 'Number' ? 'number' : field.type === 'Date' ? 'date' : 'text';
+      return (
+          <div key={field.id}>
+              <label className="text-gray-700 dark:text-gray-200">{field.label}</label>
+              <input type={inputType} name={`custom_${field.id}`}
+                  value={customFieldData[field.id] || ''}
+                  onChange={e => setCustomFieldData(prev => ({...prev, [field.id]: e.target.value}))}
+                  className="mt-2 block w-full px-4 py-2 text-gray-700 bg-white border rounded-md dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600 focus:border-primary-400 focus:ring-opacity-40 focus:ring-primary-300" 
+              />
+          </div>
+      );
+  });
+
   return (
     <div>
       <h2 className="text-3xl font-bold mb-6">Shipment Management</h2>
       <div className="flex border-b border-gray-200 dark:border-gray-700">
-        <button onClick={() => setActiveTab('all')} className={`px-4 py-2 text-lg font-medium ${activeTab === 'all' ? 'border-b-2 border-blue-500 text-blue-500' : 'text-gray-500'}`}>Active Shipments</button>
-        <button onClick={() => setActiveTab('released')} className={`px-4 py-2 text-lg font-medium ${activeTab === 'released' ? 'border-b-2 border-blue-500 text-blue-500' : 'text-gray-500'}`}>Released</button>
-        {hasAccess([UserRole.Admin, UserRole.Worker]) && <button onClick={() => setActiveTab('add')} className={`px-4 py-2 text-lg font-medium ${activeTab === 'add' ? 'border-b-2 border-blue-500 text-blue-500' : 'text-gray-500'}`}>Add New Shipment</button>}
+        <button onClick={() => setActiveTab('all')} className={`px-4 py-2 text-lg font-medium ${activeTab === 'all' ? 'border-b-2 border-primary-500 text-primary-500' : 'text-gray-500'}`}>Active Shipments</button>
+        <button onClick={() => setActiveTab('released')} className={`px-4 py-2 text-lg font-medium ${activeTab === 'released' ? 'border-b-2 border-primary-500 text-primary-500' : 'text-gray-500'}`}>Released</button>
+        {hasAccess([UserRole.Admin, UserRole.Worker]) && <button onClick={() => setActiveTab('add')} className={`px-4 py-2 text-lg font-medium ${activeTab === 'add' ? 'border-b-2 border-primary-500 text-primary-500' : 'text-gray-500'}`}>Add New Shipment</button>}
       </div>
 
       <div className="mt-6">
@@ -291,7 +324,7 @@ const Shipments: React.FC<ShipmentsProps> = ({ shipments, racks, addShipment, re
                     <td className="px-6 py-4 whitespace-nowrap text-sm">{shipment.consignee}</td>
                     <td className="px-6 py-4"><span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${shipment.status === 'Stored' ? 'bg-green-100 text-green-800' : shipment.status === 'Intake' ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'}`}>{shipment.status}</span></td>
                     <td className="px-6 py-4 text-sm font-medium">
-                        <button onClick={() => setSelectedShipment(shipment)} className="text-blue-600 hover:text-blue-900 mr-4">Details</button>
+                        <button onClick={() => setSelectedShipment(shipment)} className="text-primary-600 hover:text-indigo-900 mr-4">Details</button>
                         {shipment.status === 'Released' && hasAccess([UserRole.Admin, UserRole.Billing]) && <button onClick={() => handleViewInvoice(shipment)} className="text-green-600 hover:text-green-900">View Invoice</button>}
                         {shipment.status === 'Stored' && hasAccess([UserRole.Admin, UserRole.Supervisor, UserRole.Billing]) && <button onClick={() => setShipmentToRelease(shipment)} className="text-indigo-600 hover:text-indigo-900">Release</button>}
                     </td>
@@ -302,17 +335,24 @@ const Shipments: React.FC<ShipmentsProps> = ({ shipments, racks, addShipment, re
           </div>
         )}
         {activeTab === 'add' && (
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-8 max-w-lg mx-auto">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-8 max-w-2xl mx-auto">
             <form onSubmit={handleSubmit}>
-                {/* Form inputs are the same */}
-                 <div className="grid grid-cols-1 gap-6">
-                    <input type="text" name="shipper" value={formData.shipper} onChange={e => setFormData({...formData, shipper: e.target.value})} placeholder="Shipper" className="block w-full px-4 py-2 text-gray-700 bg-white border border-gray-200 rounded-md dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600 focus:border-blue-400 focus:ring-blue-300 focus:ring-opacity-40" required />
-                    <input type="text" name="consignee" value={formData.consignee} onChange={e => setFormData({...formData, consignee: e.target.value})} placeholder="Consignee" className="block w-full px-4 py-2 text-gray-700 bg-white border border-gray-200 rounded-md dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600 focus:border-blue-400 focus:ring-blue-300 focus:ring-opacity-40" required />
-                    <input type="number" name="weight" value={formData.weight} onChange={e => setFormData({...formData, weight: e.target.value})} placeholder="Weight (kg)" className="block w-full px-4 py-2 text-gray-700 bg-white border border-gray-200 rounded-md dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600 focus:border-blue-400 focus:ring-blue-300 focus:ring-opacity-40" required />
-                    <input type="number" name="pieces" value={formData.pieces} onChange={e => setFormData({...formData, pieces: e.target.value})} placeholder="Pieces" className="block w-full px-4 py-2 text-gray-700 bg-white border border-gray-200 rounded-md dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600 focus:border-blue-400 focus:ring-blue-300 focus:ring-opacity-40" required />
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <input type="text" name="shipper" value={formData.shipper} onChange={e => setFormData({...formData, shipper: e.target.value})} placeholder="Shipper" className="block w-full px-4 py-2 text-gray-700 bg-white border rounded-md dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600 focus:border-primary-400" required />
+                    <input type="text" name="consignee" value={formData.consignee} onChange={e => setFormData({...formData, consignee: e.target.value})} placeholder="Consignee" className="block w-full px-4 py-2 border rounded-md dark:bg-gray-800 dark:text-gray-300" required />
+                    <input type="number" name="weight" value={formData.weight} onChange={e => setFormData({...formData, weight: e.target.value})} placeholder="Weight (kg)" className="block w-full px-4 py-2 border rounded-md dark:bg-gray-800 dark:text-gray-300" required />
+                    <input type="number" name="pieces" value={formData.pieces} onChange={e => setFormData({...formData, pieces: e.target.value})} placeholder="Pieces" className="block w-full px-4 py-2 border rounded-md dark:bg-gray-800 dark:text-gray-300" required />
+                    <input type="text" name="commodity" value={formData.commodity} onChange={e => setFormData({...formData, commodity: e.target.value})} placeholder="Commodity" className="block w-full px-4 py-2 border rounded-md dark:bg-gray-800 dark:text-gray-300"/>
+                    <input type="text" name="dimensions" value={formData.dimensions} onChange={e => setFormData({...formData, dimensions: e.target.value})} placeholder="Dimensions (e.g. 10x20x30 cm)" className="block w-full px-4 py-2 border rounded-md dark:bg-gray-800 dark:text-gray-300"/>
+                    <div className="md:col-span-2">
+                        <label className="text-gray-700 dark:text-gray-200">Expected Arrival Date</label>
+                        <input type="date" name="expectedDate" value={formData.expectedDate} onChange={e => setFormData({...formData, expectedDate: e.target.value})} className="mt-2 block w-full px-4 py-2 border rounded-md dark:bg-gray-800 dark:text-gray-300"/>
+                    </div>
+                    <textarea name="notes" value={formData.notes} onChange={e => setFormData({...formData, notes: e.target.value})} placeholder="Notes" className="md:col-span-2 block w-full px-4 py-2 border rounded-md dark:bg-gray-800 dark:text-gray-300"></textarea>
+                    {renderCustomFields()}
                 </div>
-              <div className="mt-6 flex items-center justify-between">
-                <button type="submit" className="px-6 py-2 leading-5 text-white transition-colors duration-200 transform bg-blue-600 rounded-md hover:bg-blue-700">Add Shipment</button>
+              <div className="mt-6 flex items-center justify-end">
+                <button type="submit" className="px-6 py-2 leading-5 text-white transition-colors duration-200 transform bg-primary-600 rounded-md hover:bg-primary-700">Add Shipment</button>
               </div>
             </form>
           </div>
@@ -325,23 +365,37 @@ const Shipments: React.FC<ShipmentsProps> = ({ shipments, racks, addShipment, re
       {invoiceToShow && selectedShipment && <InvoiceModal shipment={selectedShipment} invoice={invoiceToShow} onClose={() => { setInvoiceToShow(null); setSelectedShipment(null); }} />}
 
       {selectedShipment && !invoiceToShow && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center">
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-8 max-w-md w-full">
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-8 max-w-lg w-full max-h-[90vh] overflow-y-auto">
             <h3 className="text-2xl font-bold mb-4">Shipment {selectedShipment.id}</h3>
-            {/* Details are the same */}
-            <div className="space-y-2 text-gray-700 dark:text-gray-300">
+            <div className="space-y-3 text-gray-700 dark:text-gray-300">
                 <p><strong>Shipper:</strong> {selectedShipment.shipper}</p>
                 <p><strong>Consignee:</strong> {selectedShipment.consignee}</p>
                 <p><strong>Weight:</strong> {selectedShipment.weight} kg, <strong>Pieces:</strong> {selectedShipment.pieces}</p>
+                <p><strong>Commodity:</strong> {selectedShipment.commodity || 'N/A'}</p>
+                <p><strong>Dimensions:</strong> {selectedShipment.dimensions || 'N/A'}</p>
                 <p><strong>Arrival:</strong> {new Date(selectedShipment.arrivalDate).toLocaleString()}</p>
+                <p><strong>Expected:</strong> {selectedShipment.expectedDate ? new Date(selectedShipment.expectedDate).toLocaleDateString() : 'N/A'}</p>
                 <p><strong>Status:</strong> {selectedShipment.status}, <strong>Rack:</strong> {selectedShipment.rackId || 'N/A'}</p>
+                {selectedShipment.notes && <p className="pt-2 border-t mt-2"><strong>Notes:</strong> {selectedShipment.notes}</p>}
+                {Object.entries(selectedShipment.customFields).length > 0 && (
+                    <div className="pt-2 border-t mt-2">
+                        <h4 className="font-semibold">Additional Info:</h4>
+                        {Object.entries(selectedShipment.customFields).map(([label, value]) => <p key={label}><strong>{label}:</strong> {value}</p>)}
+                    </div>
+                )}
             </div>
-            {selectedShipment.status === ShipmentStatus.Intake && hasAccess([UserRole.Admin, UserRole.Supervisor]) && (
-                <button onClick={() => setShipmentToAssign(selectedShipment)} className="mt-6 w-full px-6 py-2 leading-5 text-white transition-colors duration-200 transform bg-green-600 rounded-md hover:bg-green-700">
-                    Manual Assign to Rack
+            <div className="mt-6 space-y-2">
+                {selectedShipment.status === ShipmentStatus.Intake && hasAccess([UserRole.Admin, UserRole.Supervisor]) && (
+                    <button onClick={() => setShipmentToAssign(selectedShipment)} className="w-full px-6 py-2 leading-5 text-white transition-colors duration-200 transform bg-green-600 rounded-md hover:bg-green-700">
+                        Assign to Rack
+                    </button>
+                )}
+                 <button onClick={() => setShipmentToPrint(selectedShipment)} className="w-full px-6 py-2 leading-5 text-white transition-colors duration-200 transform bg-blue-600 rounded-md hover:bg-blue-700">
+                    Print Labels
                 </button>
-            )}
-            <button onClick={() => setSelectedShipment(null)} className="mt-4 w-full px-6 py-2 leading-5 text-white transition-colors duration-200 transform bg-blue-600 rounded-md hover:bg-blue-700">Close</button>
+                <button onClick={() => setSelectedShipment(null)} className="w-full px-6 py-2 leading-5 text-white transition-colors duration-200 transform bg-gray-600 rounded-md hover:bg-gray-700">Close</button>
+            </div>
           </div>
         </div>
       )}

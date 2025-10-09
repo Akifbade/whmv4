@@ -14,6 +14,7 @@ export enum UserStatus {
 export interface User {
   id: string;
   username: string;
+  email: string;
   role: UserRole;
   status: UserStatus;
 }
@@ -34,7 +35,12 @@ export interface Shipment {
   releaseDate?: string;
   status: ShipmentStatus;
   rackId?: string;
-  invoiceId?: number; // Backend uses int
+  invoiceId?: number;
+  commodity?: string;
+  dimensions?: string;
+  notes?: string;
+  expectedDate?: string;
+  customFields: Record<string, string | number>;
 }
 
 export enum RackStatus {
@@ -53,7 +59,7 @@ export interface Rack {
 }
 
 export interface ChargeSetting {
-    id: number; // Backend uses int
+    id: number;
     name: string;
     rate: number;
     unit: string;
@@ -68,10 +74,36 @@ export interface InvoiceChargeDetail {
 }
 
 export interface Invoice {
-    id: number; // Backend uses int
+    id: number;
     shipmentId: string;
     releaseDate: string;
     chargeDetails: InvoiceChargeDetail[];
     totalAmount: number;
     currency: string;
+}
+
+export interface AppSettings {
+    companyName: string;
+    theme: 'light' | 'dark' | 'system';
+    primaryColor: 'blue' | 'green' | 'indigo' | 'red' | 'orange';
+}
+
+export interface CustomField {
+    id: number;
+    label: string;
+    type: 'Text' | 'Number' | 'Date';
+}
+
+export interface InventoryReportItem {
+    id: string;
+    shipper: string;
+    consignee: string;
+    rackId: string;
+    arrivalDate: string;
+    daysInStorage: number;
+}
+
+export interface TurnoverDataPoint {
+    date: string;
+    count: number;
 }
