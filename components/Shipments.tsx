@@ -1,5 +1,3 @@
-
-
 import React, { useState, FormEvent, useEffect } from 'react';
 import QRCode from 'react-qr-code';
 import { Shipment, UserRole, ShipmentStatus, Rack, Invoice, RackStatus, ChargeSetting, CustomField } from '../types';
@@ -15,12 +13,19 @@ const PrintLabelsModal: React.FC<{ shipment: Shipment; onClose: () => void }> = 
     const handlePrint = () => {
         const printContents = document.getElementById('printable-labels-area')?.innerHTML;
         const originalContents = document.body.innerHTML;
+        // FIX: Replaced Array.from with a loop to handle CSSRuleList correctly, as it may not be a true iterable.
         const styles = Array.from(document.styleSheets)
             .map(styleSheet => {
                 try {
-                    return Array.from(styleSheet.cssRules)
-                        .map(rule => rule.cssText)
-                        .join('');
+                    const rules = styleSheet.cssRules;
+                    if (!rules) {
+                        return '';
+                    }
+                    let cssText = '';
+                    for (let i = 0; i < rules.length; i++) {
+                        cssText += rules[i].cssText;
+                    }
+                    return cssText;
                 } catch (e) {
                     console.warn('Cannot read cross-origin stylesheet');
                     return '';
@@ -89,11 +94,10 @@ const WarehouseHeatmapModal: React.FC<{
     onClose: () => void;
     onSelectRack: (rackId: string) => void;
 }> = ({ racks, onClose, onSelectRack }) => {
-    // FIX: By providing a typed initial value to reduce, the accumulator's type is correctly inferred.
-    const groupedRacks = racks.reduce((acc, rack) => {
+    const groupedRacks = racks.reduce((acc: Record<string, Rack[]>, rack) => {
         (acc[rack.rackLine] = acc[rack.rackLine] || []).push(rack);
         return acc;
-    }, {} as Record<string, Rack[]>);
+    }, {});
 
     const getStatusColor = (rack: Rack) => {
         if (rack.status === RackStatus.Full) return 'bg-red-500 cursor-not-allowed';
@@ -131,6 +135,14 @@ const WarehouseHeatmapModal: React.FC<{
     );
 };
 
+// FIX: Add a specific type for charge items to ensure consistency in the state array.
+interface ChargeItem {
+    chargeId: number;
+    name: string;
+    rate: number;
+    unit: string;
+    quantity: number;
+}
 
 const ReleaseModal: React.FC<{
     shipment: Shipment;
@@ -142,9 +154,9 @@ const ReleaseModal: React.FC<{
     
     // Initialize with storage charge
     const storageSetting = chargeSettings.find(s => s.name === 'Storage');
-    const initialCharges = storageSetting ? [{ chargeId: storageSetting.id, quantity: durationDays, name: storageSetting.name, rate: storageSetting.rate, unit: storageSetting.unit }] : [];
+    const initialCharges: ChargeItem[] = storageSetting ? [{ chargeId: storageSetting.id, quantity: durationDays, name: storageSetting.name, rate: storageSetting.rate, unit: storageSetting.unit }] : [];
     
-    const [charges, setCharges] = useState(initialCharges);
+    const [charges, setCharges] = useState<ChargeItem[]>(initialCharges);
 
     const handleQuantityChange = (chargeId: number, quantity: string) => {
         setCharges(prev => prev.map(c => c.chargeId === chargeId ? { ...c, quantity: parseInt(quantity, 10) || 0 } : c));
@@ -152,7 +164,14 @@ const ReleaseModal: React.FC<{
 
     const handleAddCharge = (setting: ChargeSetting) => {
         if (!charges.some(c => c.chargeId === setting.id)) {
-            setCharges(prev => [...prev, { ...setting, quantity: 1 }]);
+            // FIX: Ensure the new charge object has a consistent shape with `chargeId`.
+            setCharges(prev => [...prev, {
+                chargeId: setting.id,
+                name: setting.name,
+                rate: setting.rate,
+                unit: setting.unit,
+                quantity: 1
+            }]);
         }
     };
     

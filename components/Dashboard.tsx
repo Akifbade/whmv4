@@ -1,5 +1,3 @@
-
-
 import React from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 // FIX: Corrected import path for types.
@@ -34,19 +32,34 @@ const Dashboard: React.FC<DashboardProps> = ({ shipments, racks }) => {
     const processChartData = () => {
         const data: { [key: string]: { intake: number; release: number } } = {};
         
+        const toYYYYMMDD = (dateStr: string) => {
+            const d = new Date(dateStr);
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        };
+
         shipments.forEach(shipment => {
-            const arrivalDate = new Date(shipment.arrivalDate).toLocaleDateString();
+            const arrivalDate = toYYYYMMDD(shipment.arrivalDate);
             if (!data[arrivalDate]) data[arrivalDate] = { intake: 0, release: 0 };
             data[arrivalDate].intake++;
 
             if(shipment.releaseDate) {
-                const releaseDate = new Date(shipment.releaseDate).toLocaleDateString();
+                const releaseDate = toYYYYMMDD(shipment.releaseDate);
                 if (!data[releaseDate]) data[releaseDate] = { intake: 0, release: 0 };
                 data[releaseDate].release++;
             }
         });
-
-        return Object.entries(data).map(([date, values]) => ({ date, ...values })).slice(-7); // Last 7 days
+        
+        const last7Days = [...Array(7)].map((_, i) => {
+            const d = new Date();
+            d.setDate(d.getDate() - i);
+            return toYYYYMMDD(d.toISOString());
+        }).reverse();
+        
+        return last7Days.map(date => ({
+            date: new Date(date).toLocaleDateString(undefined, { month: 'short', day: 'numeric'}),
+            intake: data[date]?.intake || 0,
+            release: data[date]?.release || 0,
+        }));
     }
     
     const chartData = processChartData();
@@ -62,7 +75,7 @@ const Dashboard: React.FC<DashboardProps> = ({ shipments, racks }) => {
       </div>
 
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-            <h3 className="text-xl font-semibold mb-4">Daily Intake vs. Release</h3>
+            <h3 className="text-xl font-semibold mb-4">Daily Intake vs. Release (Last 7 Days)</h3>
              <ResponsiveContainer width="100%" height={400}>
                 <BarChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" />
