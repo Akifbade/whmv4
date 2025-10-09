@@ -8,20 +8,10 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // Middleware
-// FIX: Simplified CORS configuration for broader compatibility.
-// This allows requests from any origin and is a more robust way to handle
-// Cross-Origin Resource Sharing (CORS) during development.
 app.use(cors());
 app.use(express.json());
 
 // --- Database Setup ---
-// IMPORTANT: Create a .env file in the root of your project with your MySQL credentials
-// Example .env file:
-// DB_HOST=localhost
-// DB_USER=your_mysql_user
-// DB_PASSWORD=your_mysql_password
-// DB_DATABASE=wms_db
-
 const pool = mysql.createPool({
     host: process.env.DB_HOST || 'localhost',
     user: process.env.DB_USER || 'root',
@@ -49,7 +39,8 @@ CREATE TABLE `racks` (
   `rackLine` varchar(255) NOT NULL,
   `slot` varchar(50) NOT NULL,
   `status` varchar(50) NOT NULL DEFAULT 'Free',
-  `shipmentId` varchar(255) DEFAULT NULL
+  `capacity` int(11) NOT NULL DEFAULT 1,
+  `currentLoad` int(11) NOT NULL DEFAULT 0
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 
@@ -79,12 +70,6 @@ ALTER TABLE `racks`
 
 ALTER TABLE `shipments`
   ADD PRIMARY KEY (`id`);
-
--- You can add initial data for racks if you wish.
--- For example:
--- INSERT INTO `racks` (`id`, `rackLine`, `slot`, `status`, `shipmentId`) VALUES
--- ('R1-A1', 'Rack Line 1', 'A1', 'Free', NULL),
--- ('R1-A2', 'Rack Line 1', 'A2', 'Free', NULL);
 */
 
 // --- API ROUTES ---
@@ -141,6 +126,34 @@ app.get('/api/racks', async (req, res) => {
     }
 });
 
+// POST a new rack
+app.post('/api/racks', async (req, res) => {
+    const { rackLine, slot, capacity } = req.body;
+    if (!rackLine || !slot || !capacity) {
+        return res.status(400).json({ error: 'Missing required fields' });
+    }
+    const id = `${rackLine}-${slot}`;
+    try {
+        const newRack = {
+            id,
+            rackLine,
+            slot,
+            capacity: parseInt(capacity, 10),
+            currentLoad: 0,
+            status: 'Free',
+        };
+        await pool.query('INSERT INTO racks SET ?', newRack);
+        res.status(201).json(newRack);
+    } catch (error) {
+        console.error("Failed to add rack:", error);
+        if (error.code === 'ER_DUP_ENTRY') {
+            return res.status(409).json({ error: 'A rack with this Line and Slot already exists.' });
+        }
+        res.status(500).json({ error: 'Database insert failed' });
+    }
+});
+
+
 // POST a new shipment
 app.post('/api/shipments', async (req, res) => {
     const { shipper, consignee, weight, pieces } = req.body;
@@ -181,23 +194,40 @@ app.put('/api/shipments/assign', async (req, res) => {
     try {
         await connection.beginTransaction();
 
-        // FIX: The parameters were in the wrong order in the original query
-        await connection.query(
-            'UPDATE shipments SET rackId = ?, status = ? WHERE id = ?',
-            [rackId, 'Stored', shipmentId]
-        );
+        const [racks] = await connection.query('SELECT * FROM racks WHERE id = ? FOR UPDATE', [rackId]);
+        const rack = racks[0];
 
-        await connection.query(
-            'UPDATE racks SET shipmentId = ?, status = ? WHERE id = ?',
-            [shipmentId, 'Occupied', rackId]
-        );
+        if (!rack) {
+            throw new Error('Rack not found');
+        }
+
+        if (rack.currentLoad >= rack.capacity) {
+            throw new Error('Rack is full');
+        }
+        
+        const [shipments] = await connection.query('SELECT * FROM shipments WHERE id = ? FOR UPDATE', [shipmentId]);
+        const shipment = shipments[0];
+
+        if (!shipment) {
+            throw new Error('Shipment not found');
+        }
+        if (shipment.rackId) {
+            throw new Error('Shipment is already assigned to a rack');
+        }
+
+
+        await connection.query('UPDATE shipments SET rackId = ?, status = ? WHERE id = ?', [rackId, 'Stored', shipmentId]);
+
+        const newLoad = rack.currentLoad + 1;
+        const newStatus = newLoad >= rack.capacity ? 'Full' : 'Partial';
+        await connection.query('UPDATE racks SET currentLoad = ?, status = ? WHERE id = ?', [newLoad, newStatus, rackId]);
 
         await connection.commit();
         res.status(200).json({ success: true, message: 'Assignment successful' });
     } catch (error) {
         await connection.rollback();
         console.error("Failed to assign shipment:", error);
-        res.status(500).json({ error: 'Database transaction failed' });
+        res.status(500).json({ error: error.message || 'Database transaction failed' });
     } finally {
         connection.release();
     }
@@ -211,7 +241,7 @@ app.put('/api/shipments/release/:id', async (req, res) => {
     try {
         await connection.beginTransaction();
         
-        const [shipments] = await connection.query('SELECT * FROM shipments WHERE id = ?', [id]);
+        const [shipments] = await connection.query('SELECT * FROM shipments WHERE id = ? FOR UPDATE', [id]);
         const shipmentToRelease = shipments[0];
 
         if (!shipmentToRelease) {
@@ -232,15 +262,21 @@ app.put('/api/shipments/release/:id', async (req, res) => {
         const totalCharges = storageCharges + handlingCharge;
         
         await connection.query(
-            'UPDATE shipments SET status = ?, releaseDate = ?, storageCharges = ?, handlingCharges = ?, totalCharges = ? WHERE id = ?',
+            'UPDATE shipments SET status = ?, releaseDate = ?, storageCharges = ?, handlingCharges = ?, totalCharges = ?, rackId = NULL WHERE id = ?',
             ['Released', releaseDate, storageCharges, handlingCharge, totalCharges, id]
         );
         
         if (shipmentToRelease.rackId) {
-            await connection.query(
-                'UPDATE racks SET status = ?, shipmentId = ? WHERE id = ?',
-                ['Free', null, shipmentToRelease.rackId]
-            );
+            const [racks] = await connection.query('SELECT * FROM racks WHERE id = ? FOR UPDATE', [shipmentToRelease.rackId]);
+            if (racks[0]) {
+                const rack = racks[0];
+                const newLoad = Math.max(0, rack.currentLoad - 1);
+                const newStatus = newLoad === 0 ? 'Free' : 'Partial';
+                await connection.query(
+                    'UPDATE racks SET currentLoad = ?, status = ? WHERE id = ?',
+                    [newLoad, newStatus, shipmentToRelease.rackId]
+                );
+            }
         }
         
         await connection.commit();

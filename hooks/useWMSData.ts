@@ -72,6 +72,24 @@ export const useWMSData = () => {
     }
   }, [fetchData]);
 
+  const addRack = useCallback(async (rackData: { rackLine: string; slot: string; capacity: number }) => {
+    try {
+        const response = await fetch(`${API_BASE_URL}/racks`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(rackData),
+        });
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.error || 'Failed to add rack.');
+        }
+        await fetchData(); // Refetch all data
+    } catch (error) {
+        console.error("Error adding rack:", error);
+        alert(`Error: ${error.message}`);
+    }
+  }, [fetchData]);
+
   const assignShipmentToRack = useCallback(async (shipmentId: string, rackId: string) => {
     try {
         const response = await fetch(`${API_BASE_URL}/shipments/assign`, {
@@ -106,5 +124,5 @@ export const useWMSData = () => {
     }
   }, [fetchData]);
 
-  return { shipments, racks, addShipment, assignShipmentToRack, releaseShipment, isLoading, error };
+  return { shipments, racks, addShipment, addRack, assignShipmentToRack, releaseShipment, isLoading, error };
 };

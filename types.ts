@@ -7,7 +7,8 @@ export enum ShipmentStatus {
 
 export enum RackStatus {
   Free = 'Free',
-  Occupied = 'Occupied',
+  Partial = 'Partial',
+  Full = 'Full',
 }
 
 export enum UserRole {
@@ -39,5 +40,6 @@ export interface Rack {
   rackLine: string;
   slot: string;
   status: RackStatus;
-  shipmentId?: string;
+  capacity: number;
+  currentLoad: number;
 }
