@@ -3,8 +3,6 @@ import { useAuth, Toast } from '../App';
 import { User } from '../types';
 import { AuthApi } from '../hooks/useWMSData';
 
-const API_BASE_URL = 'http://72.60.215.188:3001';
-
 const RegistrationModal: React.FC<{ onClose: () => void; showToast: (message: string, type: 'success' | 'error') => void; }> = ({ onClose, showToast }) => {
     const [formData, setFormData] = useState({ username: '', email: '', password: '', confirmPassword: '' });
     const [error, setError] = useState<string | null>(null);
@@ -75,15 +73,7 @@ const Login: React.FC = () => {
         setIsLoading(true);
         setError(null);
         try {
-            const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username, password }),
-            });
-            const data = await response.json();
-            if (!response.ok) {
-                throw new Error(data.message || 'Login failed');
-            }
+            const data = await AuthApi.login({ username, password });
             const { user, token } = data as { user: User, token: string };
             login(user, token);
         } catch (err: any) {

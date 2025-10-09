@@ -89,8 +89,8 @@ const WarehouseHeatmapModal: React.FC<{
     onClose: () => void;
     onSelectRack: (rackId: string) => void;
 }> = ({ racks, onClose, onSelectRack }) => {
-    // FIX: Explicitly typing the accumulator for `reduce` ensures correct type inference for `groupedRacks` and prevents downstream iterator errors.
-    const groupedRacks = racks.reduce<Record<string, Rack[]>>((acc, rack) => {
+    // FIX: Explicitly typing the accumulator in the reduce callback to fix type inference issues.
+    const groupedRacks = racks.reduce((acc: Record<string, Rack[]>, rack) => {
         (acc[rack.rackLine] = acc[rack.rackLine] || []).push(rack);
         return acc;
     }, {});

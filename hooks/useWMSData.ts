@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Shipment, Rack, Invoice, ChargeSetting, User, AppSettings, CustomField, InventoryReportItem, TurnoverDataPoint } from '../types';
 import { useAuth } from '../App';
 
-const API_BASE_URL = 'http://72.60.215.188:3001/api';
+const API_BASE_URL = '/api';
 
 // This is a stand-alone fetch for public routes like registration
 const publicApiFetch = async (url: string, options: RequestInit = {}) => {
@@ -218,6 +218,12 @@ export const useWMSData = () => {
 };
 
 export const AuthApi = {
+    login: async (data: any) => {
+        return publicApiFetch('/auth/login', {
+            method: 'POST',
+            body: JSON.stringify(data),
+        });
+    },
     register: async (data: any) => {
         return publicApiFetch('/auth/register', {
             method: 'POST',
