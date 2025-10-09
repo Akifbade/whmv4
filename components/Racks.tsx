@@ -200,11 +200,11 @@ const Racks: React.FC<RacksProps> = ({ racks, shipments, addRack, assignShipment
   const [showRackQrModal, setShowRackQrModal] = useState(false);
   const [showAddRackModal, setShowAddRackModal] = useState(false);
   
-  // FIX: Explicitly typing the accumulator in the reduce callback to fix type inference issues.
-  const groupedRacks = racks.reduce<Record<string, Rack[]>>((acc, rack) => {
+  // FIX: By providing a typed initial value to reduce, the accumulator's type is correctly inferred.
+  const groupedRacks = racks.reduce((acc, rack) => {
     (acc[rack.rackLine] = acc[rack.rackLine] || []).push(rack);
     return acc;
-  }, {});
+  }, {} as Record<string, Rack[]>);
 
   const handleAssignment = async (shipmentId: string, rackId: string) => {
     try {

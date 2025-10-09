@@ -89,11 +89,11 @@ const WarehouseHeatmapModal: React.FC<{
     onClose: () => void;
     onSelectRack: (rackId: string) => void;
 }> = ({ racks, onClose, onSelectRack }) => {
-    // FIX: Explicitly typing the accumulator in the reduce callback to fix type inference issues.
-    const groupedRacks = racks.reduce<Record<string, Rack[]>>((acc, rack) => {
+    // FIX: By providing a typed initial value to reduce, the accumulator's type is correctly inferred.
+    const groupedRacks = racks.reduce((acc, rack) => {
         (acc[rack.rackLine] = acc[rack.rackLine] || []).push(rack);
         return acc;
-    }, {});
+    }, {} as Record<string, Rack[]>);
 
     const getStatusColor = (rack: Rack) => {
         if (rack.status === RackStatus.Full) return 'bg-red-500 cursor-not-allowed';

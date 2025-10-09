@@ -699,9 +699,9 @@ app.get('/api/reports/turnover', authenticateToken, authorizeRoles('Admin', 'Sup
 });
 
 
-// Welcome Route
-app.get('/', (req, res) => {
-  res.json({ message: "Welcome to the Gemini WMS API. Server is running." });
+// Welcome Route - Now at /api
+app.get('/api', (req, res) => {
+  res.json({ message: "Welcome to the Gemini WMS API. Server is running and accessible." });
 });
 
 
