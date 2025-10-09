@@ -1,4 +1,3 @@
-
 export enum ShipmentStatus {
   Intake = 'Intake',
   Stored = 'Stored',
@@ -18,6 +17,12 @@ export enum UserRole {
     Billing = 'Billing',
 }
 
+export interface User {
+    id: number;
+    username: string;
+    role: UserRole;
+}
+
 export interface Shipment {
   id: string;
   shipper: string;
@@ -28,11 +33,7 @@ export interface Shipment {
   releaseDate?: string;
   status: ShipmentStatus;
   rackId?: string;
-  charges?: {
-    storage: number;
-    handling: number;
-    total: number;
-  }
+  invoiceId?: number;
 }
 
 export interface Rack {
@@ -42,4 +43,26 @@ export interface Rack {
   status: RackStatus;
   capacity: number;
   currentLoad: number;
+}
+
+export interface ChargeSetting {
+    id: number;
+    name: string;
+    rate: number;
+    unit: string;
+}
+
+export interface Invoice {
+    id: number;
+    shipmentId: string;
+    releaseDate: string;
+    chargeDetails: Array<{
+        name: string;
+        rate: number;
+        unit: string;
+        quantity: number;
+        total: number;
+    }>;
+    totalAmount: number;
+    currency: string;
 }

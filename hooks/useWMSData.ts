@@ -1,109 +1,145 @@
-
 import { useState, useCallback, useEffect } from 'react';
-import { Shipment, Rack } from '../types';
+import { useAuth } from '../App';
+import { Shipment, Rack, User, ChargeSetting, Invoice } from '../types';
 
-// NOTE: Update this URL to point to your backend server.
-// For local development, this should match the port your server.js is running on.
 const API_BASE_URL = 'http://localhost:3001/api';
 
 export const useWMSData = () => {
+  const { token, logout } = useAuth();
   const [shipments, setShipments] = useState<Shipment[]>([]);
   const [racks, setRacks] = useState<Rack[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+  const [chargeSettings, setChargeSettings] = useState<ChargeSetting[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const getAuthHeaders = () => ({
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${token}`
+  });
+
   const fetchData = useCallback(async () => {
-    // Don't set loading true on refetches to avoid UI flicker
-    // setIsLoading(true); 
+    if (!token) return;
     setError(null);
     try {
       const [shipmentsRes, racksRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/shipments`),
-        fetch(`${API_BASE_URL}/racks`),
+        fetch(`${API_BASE_URL}/shipments`, { headers: getAuthHeaders() }),
+        fetch(`${API_BASE_URL}/racks`, { headers: getAuthHeaders() }),
       ]);
       
-      if (!shipmentsRes.ok || !racksRes.ok) {
-          throw new Error('Failed to fetch data from server. The server responded with an error status.');
+      if(shipmentsRes.status === 401 || racksRes.status === 401) {
+          logout(); // Token is invalid, force logout
+          return;
       }
+      if (!shipmentsRes.ok || !racksRes.ok) throw new Error('Failed to fetch data from server.');
 
-      const shipmentsData = await shipmentsRes.json();
-      const racksData = await racksRes.json();
-      
-      setShipments(shipmentsData);
-      setRacks(racksData);
-    } catch (error: any) {
-      console.error("Failed to fetch WMS data:", error);
-      let message = 'An unexpected error occurred while fetching data.';
-      if (error instanceof TypeError && error.message === 'Failed to fetch') {
-          if (window.location.protocol === 'https:') {
-              message = 'MIXED_CONTENT_ERROR: Your app is running on a secure (https) connection, which prevents it from fetching data from an insecure (http) server. This is a browser security feature called "Mixed Content blocking".';
-          } else {
-              message = 'LOCAL_CONNECTION_FAILED: Could not connect to the backend server. Please check your local setup.';
-          }
-      } else if (error.message) {
-          message = error.message;
-      }
-      setError(message);
+      setShipments(await shipmentsRes.json());
+      setRacks(await racksRes.json());
+    } catch (err: any) {
+      setError(err.message);
     } finally {
         setIsLoading(false);
     }
-  }, []);
+  }, [token, logout]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
+  // Generic request handler
+  const makeRequest = async (endpoint: string, options: RequestInit) => {
+    const response = await fetch(`${API_BASE_URL}${endpoint}`, options);
+    if (response.status === 401) {
+        logout();
+        throw new Error("Session expired. Please log in again.");
+    }
+    if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || `Request to ${endpoint} failed.`);
+    }
+    return response.status === 204 ? null : response.json();
+  };
+
+  // SHIPMENTS
   const addShipment = useCallback(async (newShipment: Omit<Shipment, 'id' | 'status' | 'arrivalDate'>): Promise<Shipment> => {
-    const response = await fetch(`${API_BASE_URL}/shipments`, {
+    const createdShipment = await makeRequest('/shipments', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify(newShipment),
     });
-    if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error || 'Failed to add shipment.');
-    }
-    const createdShipment = await response.json();
-    await fetchData(); // Refetch all data to ensure consistency
+    await fetchData();
     return createdShipment;
-  }, [fetchData]);
-
-  const addRack = useCallback(async (rackData: { rackLine: string; slot: string; capacity: number }) => {
-    const response = await fetch(`${API_BASE_URL}/racks`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(rackData),
-    });
-    if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error || 'Failed to add rack.');
-    }
-    await fetchData(); // Refetch all data
-  }, [fetchData]);
-
+  }, [fetchData, token]);
+  
   const assignShipmentToRack = useCallback(async (shipmentId: string, rackId: string) => {
-    const response = await fetch(`${API_BASE_URL}/shipments/assign`, {
+    await makeRequest('/shipments/assign', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ shipmentId, rackId }),
     });
-    if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error || 'Failed to assign shipment to rack.');
-    }
-    await fetchData(); // Refetch all data
-  }, [fetchData]);
-
-  const releaseShipment = useCallback(async (shipmentId: string) => {
-    const response = await fetch(`${API_BASE_URL}/shipments/release/${shipmentId}`, {
+    await fetchData();
+  }, [fetchData, token]);
+  
+  const releaseShipment = useCallback(async (shipmentId: string, chargeOverrides: any) => {
+    const result = await makeRequest(`/shipments/release/${shipmentId}`, {
         method: 'PUT',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ chargeOverrides }),
     });
-    if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error || 'Failed to release shipment.');
-    }
-    await fetchData(); // Refetch all data
-  }, [fetchData]);
+    await fetchData();
+    return result;
+  }, [fetchData, token]);
 
-  return { shipments, racks, addShipment, addRack, assignShipmentToRack, releaseShipment, isLoading, error, fetchData };
+  const getInvoice = useCallback(async (shipmentId: string): Promise<Invoice | null> => {
+    try {
+        return await makeRequest(`/invoices/${shipmentId}`, {
+            method: 'GET',
+            headers: getAuthHeaders()
+        });
+    } catch (e) {
+        return null; // Return null if not found
+    }
+  }, [token]);
+
+  // RACKS
+  const addRack = useCallback(async (rackData: { rackLine: string; slot: string; capacity: number }) => {
+    await makeRequest('/racks', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(rackData),
+    });
+    await fetchData();
+  }, [fetchData, token]);
+
+  // USERS (Admin)
+  const fetchUsers = useCallback(async () => {
+    const usersData = await makeRequest('/users', { headers: getAuthHeaders() });
+    setUsers(usersData);
+  }, [token]);
+  const addUser = useCallback(async (userData: any) => {
+    await makeRequest('/users', { method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(userData) });
+    await fetchUsers();
+  }, [fetchUsers, token]);
+
+  // SETTINGS (Admin)
+  const fetchChargeSettings = useCallback(async () => {
+    const settingsData = await makeRequest('/settings/charges', { headers: getAuthHeaders() });
+    setChargeSettings(settingsData);
+  }, [token]);
+  const addChargeSetting = useCallback(async (settingData: any) => {
+    await makeRequest('/settings/charges', { method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(settingData) });
+    await fetchChargeSettings();
+  }, [fetchChargeSettings, token]);
+  const deleteChargeSetting = useCallback(async (id: number) => {
+    await makeRequest(`/settings/charges/${id}`, { method: 'DELETE', headers: getAuthHeaders() });
+    await fetchChargeSettings();
+  }, [fetchChargeSettings, token]);
+
+
+  return { 
+      shipments, racks, users, chargeSettings, isLoading, error, 
+      fetchData, addShipment, addRack, assignShipmentToRack, releaseShipment, getInvoice,
+      fetchUsers, addUser,
+      fetchChargeSettings, addChargeSetting, deleteChargeSetting
+  };
 };

@@ -1,163 +1,147 @@
-
-import React, { useState } from 'react';
+import React, { useState, useContext, createContext, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
 import Shipments from './components/Shipments';
 import Racks from './components/Racks';
 import Header from './components/Header';
+import Settings from './components/Settings';
+import Login from './components/Login';
 import { useWMSData } from './hooks/useWMSData';
-import { UserRole } from './types';
+import { UserRole, User } from './types';
 
-type View = 'dashboard' | 'shipments' | 'racks';
+type View = 'dashboard' | 'shipments' | 'racks' | 'settings';
+
+interface AuthContextType {
+    user: User | null;
+    token: string | null;
+    login: (user: User, token: string) => void;
+    logout: () => void;
+}
+
+const AuthContext = createContext<AuthContextType | null>(null);
+
+export const useAuth = () => {
+    const context = useContext(AuthContext);
+    if (!context) {
+        throw new Error("useAuth must be used within an AuthProvider");
+    }
+    return context;
+};
 
 const Toast: React.FC<{ message: string; type: 'success' | 'error'; onClose: () => void }> = ({ message, type, onClose }) => {
     const bgColor = type === 'success' ? 'bg-green-500' : 'bg-red-500';
     return (
-        <div className={`fixed top-5 right-5 z-50 p-4 rounded-lg shadow-lg text-white ${bgColor} flex items-center`}>
+        <div className={`fixed top-5 right-5 z-50 p-4 rounded-lg shadow-lg text-white ${bgColor} flex items-center animate-fade-in-down`}>
             <span className="flex-grow">{message}</span>
             <button onClick={onClose} className="ml-4 font-bold text-xl">&times;</button>
         </div>
     );
 };
 
-const App: React.FC = () => {
-  const [currentView, setCurrentView] = useState<View>('dashboard');
-  const [currentUserRole, setCurrentUserRole] = useState<UserRole>(UserRole.Admin);
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+const WMSApp: React.FC = () => {
+    const [currentView, setCurrentView] = useState<View>('dashboard');
+    const { user } = useAuth();
+    const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
-  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
-    setToast({ message, type });
-    setTimeout(() => {
-      setToast(null);
-    }, 5000);
-  };
-  
-  const wmsData = useWMSData();
-  const { isLoading, error, shipments } = wmsData;
+    const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+        setToast({ message, type });
+        setTimeout(() => setToast(null), 5000);
+    };
+    
+    const wmsData = useWMSData();
+    const { isLoading, error, shipments } = wmsData;
 
-  const renderView = () => {
-    switch (currentView) {
-      case 'dashboard':
-        return <Dashboard shipments={wmsData.shipments} racks={wmsData.racks} />;
-      case 'shipments':
-        return <Shipments {...wmsData} currentUserRole={currentUserRole} showToast={showToast} />;
-      case 'racks':
-        return <Racks {...wmsData} currentUserRole={currentUserRole} showToast={showToast} />;
-      default:
-        return <Dashboard shipments={wmsData.shipments} racks={wmsData.racks} />;
-    }
-  };
-
-  const renderError = () => {
-    if (error?.startsWith('MIXED_CONTENT_ERROR:')) {
-        const message = error.replace('MIXED_CONTENT_ERROR: ', '');
+    const renderView = () => {
+        switch (currentView) {
+            case 'dashboard': return <Dashboard {...wmsData} />;
+            case 'shipments': return <Shipments {...wmsData} showToast={showToast} />;
+            case 'racks': return <Racks {...wmsData} showToast={showToast} />;
+            case 'settings': return <Settings showToast={showToast} />;
+            default: return <Dashboard {...wmsData} />;
+        }
+    };
+    
+    if (error) {
         return (
-            <div className="text-center p-8 bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl">
-                 <svg className="mx-auto h-12 w-12 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                 </svg>
-                 <h2 className="mt-4 text-2xl font-bold text-orange-500">Browser Security Block</h2>
-                 <div className="mt-4 text-left text-gray-700 dark:text-gray-300 space-y-4">
-                    <p>Your browser has blocked the app from connecting to the API server. This is a security feature, not a bug in the code.</p>
-                    <div>
-                        <h3 className="font-bold">The Problem: Mixed Content</h3>
-                        <p>{message}</p>
-                    </div>
-                     <div>
-                        <h3 className="font-bold">How to Fix</h3>
-                        <p className="bg-gray-100 dark:bg-gray-900 p-3 rounded-md">The backend server at <strong>http://185.120.19.19:3001</strong> must be configured to serve traffic over a secure <strong>HTTPS</strong> connection with a valid SSL certificate.</p>
-                    </div>
-                 </div>
-                <button 
-                    onClick={() => window.location.reload()}
-                    className="mt-8 px-6 py-2 leading-5 text-white transition-colors duration-200 transform bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:bg-blue-700"
-                >
-                    Retry Connection
-                </button>
-            </div>
-        );
-    } else if (error?.startsWith('LOCAL_CONNECTION_FAILED:')) {
-        return (
-            <div className="text-center p-8 bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl">
-                 <svg className="mx-auto h-12 w-12 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M18.364 5.636a9 9 0 010 12.728m-12.728 0a9 9 0 010-12.728m12.728 0L5.636 18.364m0-12.728L18.364 18.364" />
-                 </svg>
-                 <h2 className="mt-4 text-2xl font-bold text-red-500">Cannot Connect to Local Server</h2>
-                 <div className="mt-4 text-left text-gray-700 dark:text-gray-300 space-y-4">
-                    <p>The application could not reach the backend API server. This usually means the server is not running or is misconfigured. Please check the following:</p>
-                    <ul className="list-disc list-inside space-y-2 bg-gray-100 dark:bg-gray-900 p-4 rounded-md">
-                        <li>
-                            <strong>Is the server running?</strong> A terminal window should be open with the message:
-                            <code className="block bg-gray-200 dark:bg-gray-700 p-1 rounded text-sm mt-1">Server running on http://localhost:3001</code>
-                        </li>
-                        <li>
-                            <strong>Is your database running?</strong> The backend server needs to connect to your MySQL database. Ensure it is active.
-                        </li>
-                        <li>
-                            <strong>Is the <code className="bg-gray-200 dark:bg-gray-700 p-1 rounded text-xs">.env</code> file correct?</strong> This file in your project folder must contain the correct database credentials.
-                        </li>
-                    </ul>
-                 </div>
-                <button 
-                    onClick={() => window.location.reload()}
-                    className="mt-8 px-6 py-2 leading-5 text-white transition-colors duration-200 transform bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:bg-blue-700"
-                >
-                    Retry Connection
-                </button>
-            </div>
-        );
-    }
-
-    // Generic error
-    return (
-        <div className="text-center p-8 bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-lg">
-          <svg className="mx-auto h-12 w-12 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-          </svg>
-          <h2 className="mt-4 text-2xl font-bold text-red-500">Connection Error</h2>
-          <p className="mt-2 text-gray-700 dark:text-gray-300">{error}</p>
-          <button 
-            onClick={() => window.location.reload()}
-            className="mt-6 px-6 py-2 leading-5 text-white transition-colors duration-200 transform bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:bg-blue-700"
-          >
-            Retry
-          </button>
-        </div>
-    );
-  };
-
-  if (error) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-gray-100 dark:bg-gray-900 p-4">
-        {renderError()}
-      </div>
-    );
-  }
-
-  // Show a loading screen only on the initial data fetch
-  if (isLoading && shipments.length === 0) {
-     return (
-        <div className="flex h-screen items-center justify-center bg-gray-100 dark:bg-gray-900">
-             <div className="flex flex-col items-center space-y-4">
-                <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent border-solid rounded-full animate-spin"></div>
-                <span className="text-xl font-semibold text-gray-700 dark:text-gray-200">Loading WMS Data...</span>
+          <div className="flex h-screen items-center justify-center bg-gray-100 dark:bg-gray-900 p-4">
+             <div className="text-center p-8 bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-lg">
+                <h2 className="mt-4 text-2xl font-bold text-red-500">Connection Error</h2>
+                <p className="mt-2 text-gray-700 dark:text-gray-300">{error}</p>
              </div>
-        </div>
-     );
-  }
+          </div>
+        );
+    }
+    if (isLoading && shipments.length === 0) {
+        return (
+            <div className="flex h-screen items-center justify-center bg-gray-100 dark:bg-gray-900">
+                <div className="flex flex-col items-center space-y-4">
+                    <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent border-solid rounded-full animate-spin"></div>
+                    <span className="text-xl font-semibold text-gray-700 dark:text-gray-200">Loading WMS Data...</span>
+                </div>
+            </div>
+        );
+    }
 
-  return (
-    <div className="flex h-screen bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200">
-      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
-      <Sidebar currentView={currentView} setCurrentView={setCurrentView} />
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <Header currentUserRole={currentUserRole} setCurrentUserRole={setCurrentUserRole} />
-        <main className="flex-1 overflow-x-hidden overflow-y-auto bg-gray-100 dark:bg-gray-900 p-6">
-          {renderView()}
-        </main>
-      </div>
-    </div>
-  );
+    return (
+        <div className="flex h-screen bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200">
+            {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+            <Sidebar currentView={currentView} setCurrentView={setCurrentView} />
+            <div className="flex-1 flex flex-col overflow-hidden">
+                <Header />
+                <main className="flex-1 overflow-x-hidden overflow-y-auto bg-gray-100 dark:bg-gray-900 p-6">
+                    {renderView()}
+                </main>
+            </div>
+        </div>
+    );
+}
+
+const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+    const [user, setUser] = useState<User | null>(null);
+    const [token, setToken] = useState<string | null>(null);
+
+    useEffect(() => {
+        // Check local storage for existing session
+        const storedToken = localStorage.getItem('wms_token');
+        const storedUser = localStorage.getItem('wms_user');
+        if (storedToken && storedUser) {
+            setToken(storedToken);
+            setUser(JSON.parse(storedUser));
+        }
+    }, []);
+
+    const login = (userData: User, userToken: string) => {
+        setUser(userData);
+        setToken(userToken);
+        localStorage.setItem('wms_user', JSON.stringify(userData));
+        localStorage.setItem('wms_token', userToken);
+    };
+
+    const logout = () => {
+        setUser(null);
+        setToken(null);
+        localStorage.removeItem('wms_user');
+        localStorage.removeItem('wms_token');
+    };
+
+    return (
+        <AuthContext.Provider value={{ user, token, login, logout }}>
+            {children}
+        </AuthContext.Provider>
+    );
 };
+
+const App: React.FC = () => {
+    return (
+        <AuthProvider>
+            <Main />
+        </AuthProvider>
+    );
+}
+
+const Main: React.FC = () => {
+    const { user } = useAuth();
+    return user ? <WMSApp /> : <Login />;
+}
 
 export default App;
