@@ -10,9 +10,27 @@ import { UserRole } from './types';
 
 type View = 'dashboard' | 'shipments' | 'racks';
 
+const Toast: React.FC<{ message: string; type: 'success' | 'error'; onClose: () => void }> = ({ message, type, onClose }) => {
+    const bgColor = type === 'success' ? 'bg-green-500' : 'bg-red-500';
+    return (
+        <div className={`fixed top-5 right-5 z-50 p-4 rounded-lg shadow-lg text-white ${bgColor} flex items-center`}>
+            <span className="flex-grow">{message}</span>
+            <button onClick={onClose} className="ml-4 font-bold text-xl">&times;</button>
+        </div>
+    );
+};
+
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<View>('dashboard');
   const [currentUserRole, setCurrentUserRole] = useState<UserRole>(UserRole.Admin);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => {
+      setToast(null);
+    }, 5000);
+  };
   
   const wmsData = useWMSData();
   const { isLoading, error, shipments } = wmsData;
@@ -22,9 +40,9 @@ const App: React.FC = () => {
       case 'dashboard':
         return <Dashboard shipments={wmsData.shipments} racks={wmsData.racks} />;
       case 'shipments':
-        return <Shipments {...wmsData} currentUserRole={currentUserRole} />;
+        return <Shipments {...wmsData} currentUserRole={currentUserRole} showToast={showToast} />;
       case 'racks':
-        return <Racks {...wmsData} currentUserRole={currentUserRole}/>;
+        return <Racks {...wmsData} currentUserRole={currentUserRole} showToast={showToast} />;
       default:
         return <Dashboard shipments={wmsData.shipments} racks={wmsData.racks} />;
     }
@@ -130,6 +148,7 @@ const App: React.FC = () => {
 
   return (
     <div className="flex h-screen bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200">
+      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
       <Sidebar currentView={currentView} setCurrentView={setCurrentView} />
       <div className="flex-1 flex flex-col overflow-hidden">
         <Header currentUserRole={currentUserRole} setCurrentUserRole={setCurrentUserRole} />

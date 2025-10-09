@@ -1,3 +1,4 @@
+
 import { useState, useCallback, useEffect } from 'react';
 import { Shipment, Rack } from '../types';
 
@@ -12,7 +13,8 @@ export const useWMSData = () => {
   const [error, setError] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
-    setIsLoading(true);
+    // Don't set loading true on refetches to avoid UI flicker
+    // setIsLoading(true); 
     setError(null);
     try {
       const [shipmentsRes, racksRes] = await Promise.all([
@@ -51,78 +53,57 @@ export const useWMSData = () => {
     fetchData();
   }, [fetchData]);
 
-  const addShipment = useCallback(async (newShipment: Omit<Shipment, 'id' | 'status' | 'arrivalDate'>): Promise<Shipment | null> => {
-    try {
-        const response = await fetch(`${API_BASE_URL}/shipments`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(newShipment),
-        });
-        if (!response.ok) {
-            const err = await response.json();
-            throw new Error(err.error || 'Failed to add shipment.');
-        }
-        const createdShipment = await response.json();
-        await fetchData(); // Refetch all data to ensure consistency
-        return createdShipment;
-    } catch (error) {
-        console.error("Error adding shipment:", error);
-        alert(`Error: ${error.message}`);
-        return null;
+  const addShipment = useCallback(async (newShipment: Omit<Shipment, 'id' | 'status' | 'arrivalDate'>): Promise<Shipment> => {
+    const response = await fetch(`${API_BASE_URL}/shipments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newShipment),
+    });
+    if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Failed to add shipment.');
     }
+    const createdShipment = await response.json();
+    await fetchData(); // Refetch all data to ensure consistency
+    return createdShipment;
   }, [fetchData]);
 
   const addRack = useCallback(async (rackData: { rackLine: string; slot: string; capacity: number }) => {
-    try {
-        const response = await fetch(`${API_BASE_URL}/racks`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(rackData),
-        });
-        if (!response.ok) {
-            const err = await response.json();
-            throw new Error(err.error || 'Failed to add rack.');
-        }
-        await fetchData(); // Refetch all data
-    } catch (error) {
-        console.error("Error adding rack:", error);
-        alert(`Error: ${error.message}`);
+    const response = await fetch(`${API_BASE_URL}/racks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(rackData),
+    });
+    if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Failed to add rack.');
     }
+    await fetchData(); // Refetch all data
   }, [fetchData]);
 
   const assignShipmentToRack = useCallback(async (shipmentId: string, rackId: string) => {
-    try {
-        const response = await fetch(`${API_BASE_URL}/shipments/assign`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ shipmentId, rackId }),
-        });
-        if (!response.ok) {
-            const err = await response.json();
-            throw new Error(err.error || 'Failed to assign shipment to rack.');
-        }
-        await fetchData(); // Refetch all data
-    } catch (error) {
-        console.error("Error assigning shipment:", error);
-        alert(`Error: ${error.message}`);
+    const response = await fetch(`${API_BASE_URL}/shipments/assign`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shipmentId, rackId }),
+    });
+    if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Failed to assign shipment to rack.');
     }
+    await fetchData(); // Refetch all data
   }, [fetchData]);
 
   const releaseShipment = useCallback(async (shipmentId: string) => {
-    try {
-        const response = await fetch(`${API_BASE_URL}/shipments/release/${shipmentId}`, {
-            method: 'PUT',
-        });
-        if (!response.ok) {
-            const err = await response.json();
-            throw new Error(err.error || 'Failed to release shipment.');
-        }
-        await fetchData(); // Refetch all data
-    } catch (error) {
-        console.error("Error releasing shipment:", error);
-        alert(`Error: ${error.message}`);
+    const response = await fetch(`${API_BASE_URL}/shipments/release/${shipmentId}`, {
+        method: 'PUT',
+    });
+    if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Failed to release shipment.');
     }
+    await fetchData(); // Refetch all data
   }, [fetchData]);
 
-  return { shipments, racks, addShipment, addRack, assignShipmentToRack, releaseShipment, isLoading, error };
+  return { shipments, racks, addShipment, addRack, assignShipmentToRack, releaseShipment, isLoading, error, fetchData };
 };

@@ -1,8 +1,14 @@
+
 import React, { useState, useEffect, useRef, FormEvent } from 'react';
 import QRCode from 'react-qr-code';
 import { Rack, RackStatus, UserRole, Shipment } from '../types';
 import { useWMSData } from '../hooks/useWMSData';
 import { Html5Qrcode } from 'html5-qrcode';
+
+interface RacksProps extends ReturnType<typeof useWMSData> {
+  currentUserRole: UserRole;
+  showToast: (message: string, type: 'success' | 'error') => void;
+}
 
 const RackCard: React.FC<{ rack: Rack; shipments: Shipment[] }> = ({ rack, shipments }) => {
     const containedShipments = shipments.filter(s => s.rackId === rack.id);
@@ -27,13 +33,13 @@ const RackCard: React.FC<{ rack: Rack; shipments: Shipment[] }> = ({ rack, shipm
                 <span className="font-bold text-lg">{rack.currentLoad} / {rack.capacity}</span>
             </div>
             <div className="mt-2 text-sm text-gray-700 dark:text-gray-200 flex-grow">
-                {containedShipments.length > 0 ? containedShipments.map(s => <div key={s.id}>{s.id}</div>) : 'Empty'}
+                {containedShipments.length > 0 ? containedShipments.map(s => <div key={s.id}>{s.id} ({s.pieces} pcs)</div>) : 'Empty'}
             </div>
         </div>
     );
 };
 
-const Scanner: React.FC<{ onAssign: (shipmentId: string, rackId: string) => void }> = ({ onAssign }) => {
+const Scanner: React.FC<{ onAssign: (shipmentId: string, rackId: string) => void, showToast: (message: string, type: 'success' | 'error') => void; }> = ({ onAssign, showToast }) => {
     const [scannedShipment, setScannedShipment] = useState<string | null>(null);
     const [scannedRack, setScannedRack] = useState<string | null>(null);
     const [message, setMessage] = useState('Scan Shipment QR Code...');
@@ -46,9 +52,13 @@ const Scanner: React.FC<{ onAssign: (shipmentId: string, rackId: string) => void
         
         const startScanner = async () => {
             try {
+                const cameras = await Html5Qrcode.getCameras();
+                if (!cameras || cameras.length === 0) {
+                    throw new Error("No cameras found.");
+                }
                 await qrScanner.start(
                     { facingMode: "environment" },
-                    { fps: 10, qrbox: 250 },
+                    { fps: 10, qrbox: {width: 250, height: 250} },
                     (decodedText) => {
                         try {
                             const data = JSON.parse(decodedText);
@@ -62,7 +72,7 @@ const Scanner: React.FC<{ onAssign: (shipmentId: string, rackId: string) => void
                                 resetScanner();
                             }
                         } catch (e) {
-                            // ignore non-json qr codes
+                           // ignore non-json qr codes
                         }
                     },
                     (errorMessage) => { /* ignore */ }
@@ -70,6 +80,7 @@ const Scanner: React.FC<{ onAssign: (shipmentId: string, rackId: string) => void
             } catch (err) {
                 console.error("QR Scanner Error:", err);
                 setMessage("Could not start scanner. Check camera permissions.");
+                showToast("Could not start scanner. Check camera permissions.", 'error');
             }
         };
 
@@ -133,7 +144,11 @@ const PrintRackQrModal: React.FC<{ racks: Rack[]; onClose: () => void }> = ({ ra
     );
 };
 
-const AddRackModal: React.FC<{ addRack: (rack: { rackLine: string; slot: string; capacity: number }) => void; onClose: () => void }> = ({ addRack, onClose }) => {
+const AddRackModal: React.FC<{ 
+    addRack: (rack: { rackLine: string; slot: string; capacity: number }) => Promise<void>; 
+    onClose: () => void;
+    showToast: (message: string, type: 'success' | 'error') => void;
+}> = ({ addRack, onClose, showToast }) => {
     const [formData, setFormData] = useState({ rackLine: '', slot: '', capacity: 1 });
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -141,13 +156,18 @@ const AddRackModal: React.FC<{ addRack: (rack: { rackLine: string; slot: string;
         setFormData(prev => ({ ...prev, [name]: value }));
     };
 
-    const handleSubmit = (e: FormEvent) => {
+    const handleSubmit = async (e: FormEvent) => {
         e.preventDefault();
-        if (formData.rackLine && formData.slot && formData.capacity) {
-            addRack({ ...formData, capacity: Number(formData.capacity) });
+        if (!formData.rackLine || !formData.slot || !formData.capacity) {
+            showToast('Please fill all fields.', 'error');
+            return;
+        }
+        try {
+            await addRack({ ...formData, capacity: Number(formData.capacity) });
+            showToast(`Rack ${formData.rackLine}-${formData.slot} created successfully.`, 'success');
             onClose();
-        } else {
-            alert('Please fill all fields.');
+        } catch (error: any) {
+            showToast(error.message, 'error');
         }
     };
     
@@ -179,7 +199,7 @@ const AddRackModal: React.FC<{ addRack: (rack: { rackLine: string; slot: string;
 };
 
 
-const Racks: React.FC<ReturnType<typeof useWMSData> & { currentUserRole: UserRole }> = ({ racks, shipments, addRack, assignShipmentToRack, currentUserRole }) => {
+const Racks: React.FC<RacksProps> = ({ racks, shipments, addRack, assignShipmentToRack, currentUserRole, showToast }) => {
   const [showScanner, setShowScanner] = useState(false);
   const [showRackQrModal, setShowRackQrModal] = useState(false);
   const [showAddRackModal, setShowAddRackModal] = useState(false);
@@ -192,10 +212,15 @@ const Racks: React.FC<ReturnType<typeof useWMSData> & { currentUserRole: UserRol
     return acc;
   }, {} as Record<string, Rack[]>);
 
-  const handleAssignment = (shipmentId: string, rackId: string) => {
-    assignShipmentToRack(shipmentId, rackId);
-    setShowScanner(false);
-    alert(`Successfully assigned Shipment ${shipmentId} to Rack ${rackId}`);
+  const handleAssignment = async (shipmentId: string, rackId: string) => {
+    try {
+        await assignShipmentToRack(shipmentId, rackId);
+        setShowScanner(false);
+        showToast(`Successfully assigned Shipment ${shipmentId} to Rack ${rackId}`, 'success');
+    } catch(error: any) {
+        setShowScanner(false);
+        showToast(error.message, 'error');
+    }
   };
 
   const canManageRacks = currentUserRole === UserRole.Admin || currentUserRole === UserRole.Supervisor;
@@ -222,9 +247,9 @@ const Racks: React.FC<ReturnType<typeof useWMSData> & { currentUserRole: UserRol
         </div>
       </div>
 
-      {showScanner && <div className="mb-6"><Scanner onAssign={handleAssignment} /></div>}
+      {showScanner && <div className="mb-6"><Scanner onAssign={handleAssignment} showToast={showToast} /></div>}
       {showRackQrModal && <PrintRackQrModal racks={racks} onClose={() => setShowRackQrModal(false)} />}
-      {showAddRackModal && <AddRackModal addRack={addRack} onClose={() => setShowAddRackModal(false)} />}
+      {showAddRackModal && <AddRackModal addRack={addRack} onClose={() => setShowAddRackModal(false)} showToast={showToast} />}
 
       <div className="space-y-8">
         {Object.entries(groupedRacks).map(([rackLine, rackList]) => (

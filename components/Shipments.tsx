@@ -1,8 +1,14 @@
+
 import React, { useState, FormEvent } from 'react';
 import QRCode from 'react-qr-code';
 import { Shipment, UserRole, ShipmentStatus } from '../types';
 import { suggestRackPlacement } from '../services/geminiService';
 import { useWMSData } from '../hooks/useWMSData';
+
+interface ShipmentsProps extends ReturnType<typeof useWMSData> {
+  currentUserRole: UserRole;
+  showToast: (message: string, type: 'success' | 'error') => void;
+}
 
 const PrintLabelsModal: React.FC<{ shipment: Shipment; onClose: () => void }> = ({ shipment, onClose }) => {
     const handlePrint = () => {
@@ -40,8 +46,8 @@ const PrintLabelsModal: React.FC<{ shipment: Shipment; onClose: () => void }> = 
     );
 };
 
-const Shipments: React.FC<ReturnType<typeof useWMSData> & { currentUserRole: UserRole }> = (
-    { shipments, racks, addShipment, releaseShipment, currentUserRole }
+const Shipments: React.FC<ShipmentsProps> = (
+    { shipments, racks, addShipment, releaseShipment, currentUserRole, showToast }
 ) => {
   const [activeTab, setActiveTab] = useState('all');
   const [selectedShipment, setSelectedShipment] = useState<Shipment | null>(null);
@@ -64,18 +70,31 @@ const Shipments: React.FC<ReturnType<typeof useWMSData> & { currentUserRole: Use
         weight: parseFloat(formData.weight),
         pieces: parseInt(formData.pieces, 10),
     };
-    if (newShipment.shipper && newShipment.consignee && newShipment.weight > 0 && newShipment.pieces > 0) {
+    if (!(newShipment.shipper && newShipment.consignee && newShipment.weight > 0 && newShipment.pieces > 0)) {
+        showToast("Please fill all fields with valid data.", 'error');
+        return;
+    }
+
+    try {
         const createdShipment = await addShipment(newShipment);
-        if (createdShipment) {
-            setFormData({ shipper: '', consignee: '', weight: '', pieces: '' });
-            setSuggestion(null);
-            setShipmentToPrint(createdShipment);
-            setActiveTab('all');
-        }
-    } else {
-        alert("Please fill all fields with valid data.");
+        setFormData({ shipper: '', consignee: '', weight: '', pieces: '' });
+        setSuggestion(null);
+        setShipmentToPrint(createdShipment);
+        setActiveTab('all');
+        showToast(`Shipment ${createdShipment.id} created successfully.`, 'success');
+    } catch(error: any) {
+        showToast(error.message, 'error');
     }
   };
+  
+  const handleReleaseShipment = async (shipmentId: string) => {
+      try {
+        await releaseShipment(shipmentId);
+        showToast(`Shipment ${shipmentId} released successfully.`, 'success');
+      } catch (error: any) {
+        showToast(error.message, 'error');
+      }
+  }
 
   const handleSuggestRack = async () => {
       setIsLoadingSuggestion(true);
@@ -142,7 +161,7 @@ const Shipments: React.FC<ReturnType<typeof useWMSData> & { currentUserRole: Use
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <button onClick={() => setSelectedShipment(shipment)} className="text-blue-600 hover:text-blue-900 mr-4">Details</button>
                       {canPerformAction('release') && shipment.status === ShipmentStatus.Stored && (
-                        <button onClick={() => releaseShipment(shipment.id)} className="text-indigo-600 hover:text-indigo-900">Release</button>
+                        <button onClick={() => handleReleaseShipment(shipment.id)} className="text-indigo-600 hover:text-indigo-900">Release</button>
                       )}
                     </td>
                   </tr>
@@ -159,7 +178,7 @@ const Shipments: React.FC<ReturnType<typeof useWMSData> & { currentUserRole: Use
                 <input type="text" name="shipper" value={formData.shipper} onChange={handleInputChange} placeholder="Shipper" className="block w-full px-4 py-2 text-gray-700 bg-white border border-gray-200 rounded-md dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600 focus:border-blue-400 focus:ring-blue-300 focus:ring-opacity-40 dark:focus:border-blue-300 focus:outline-none focus:ring" required />
                 <input type="text" name="consignee" value={formData.consignee} onChange={handleInputChange} placeholder="Consignee" className="block w-full px-4 py-2 text-gray-700 bg-white border border-gray-200 rounded-md dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600 focus:border-blue-400 focus:ring-blue-300 focus:ring-opacity-40 dark:focus:border-blue-300 focus:outline-none focus:ring" required />
                 <input type="number" name="weight" value={formData.weight} onChange={handleInputChange} placeholder="Weight (kg)" className="block w-full px-4 py-2 text-gray-700 bg-white border border-gray-200 rounded-md dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600 focus:border-blue-400 focus:ring-blue-300 focus:ring-opacity-40 dark:focus:border-blue-300 focus:outline-none focus:ring" required />
-                <input type="number" name="pieces" value={formData.pieces} onChange={handleInputChange} placeholder="Pieces" className="block w-full px-4 py-2 text-gray-700 bg-white border border-gray-200 rounded-md dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600 focus:border-blue-400 focus:ring-blue-300 focus:ring-opacity-40 dark:focus:border-blue-300 focus:outline-none focus:ring" required />
+                <input type="number" name="pieces" value={formData.pieces} onChange={handleInputChange} placeholder="Pieces" className="block w-full px-4 py-2 text-gray-700 bg-white border border-gray-200 rounded-md dark:bg-gray-800 dark:text-ray-300 dark:border-gray-600 focus:border-blue-400 focus:ring-blue-300 focus:ring-opacity-40 dark:focus:border-blue-300 focus:outline-none focus:ring" required />
               </div>
               <div className="mt-6 flex items-center justify-between">
                 <button type="submit" className="px-6 py-2 leading-5 text-white transition-colors duration-200 transform bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:bg-blue-700">Add Shipment</button>

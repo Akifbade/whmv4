@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { Shipment, Rack, ShipmentStatus, RackStatus } from '../types';
+import { Shipment, Rack, ShipmentStatus } from '../types';
 
 interface DashboardProps {
   shipments: Shipment[];
@@ -23,8 +23,11 @@ const StatCard: React.FC<{ title: string; value: string | number; icon: React.Re
 const Dashboard: React.FC<DashboardProps> = ({ shipments, racks }) => {
     const totalShipments = shipments.length;
     const activeShipments = shipments.filter(s => s.status === ShipmentStatus.Stored).length;
-    const releasedShipments = shipments.filter(s => s.status === ShipmentStatus.Released).length;
-    const availableSlots = racks.filter(r => r.status === RackStatus.Free).length;
+
+    const totalCapacity = racks.reduce((sum, rack) => sum + rack.capacity, 0);
+    const totalLoad = racks.reduce((sum, rack) => sum + rack.currentLoad, 0);
+    const availableSlots = totalCapacity - totalLoad;
+    const utilization = totalCapacity > 0 ? ((totalLoad / totalCapacity) * 100).toFixed(1) + '%' : '0%';
     
     const processChartData = () => {
         const data: { [key: string]: { intake: number; release: number } } = {};
@@ -52,8 +55,8 @@ const Dashboard: React.FC<DashboardProps> = ({ shipments, racks }) => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         <StatCard title="Total Shipments" value={totalShipments} icon={<svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path></svg>} />
         <StatCard title="Active (Stored)" value={activeShipments} icon={<svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"></path></svg>} />
-        <StatCard title="Released Shipments" value={releasedShipments} icon={<svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>} />
         <StatCard title="Available Rack Slots" value={availableSlots} icon={<svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path></svg>} />
+        <StatCard title="Warehouse Utilization" value={utilization} icon={<svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>} />
       </div>
 
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">

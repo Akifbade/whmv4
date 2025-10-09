@@ -1,4 +1,3 @@
-
 import 'dotenv/config';
 import express from 'express';
 import mysql from 'mysql2/promise';
@@ -74,13 +73,8 @@ ALTER TABLE `shipments`
 
 // --- API ROUTES ---
 
-// Welcome route for the root URL
-app.get('/', (req, res) => {
-    res.status(200).json({ message: "Welcome to the Gemini WMS API. Server is running." });
-});
-
 // Helper to format shipment data from DB to match frontend type
-const formatShipments = (shipments) => {
+function formatShipments(shipments) {
     return shipments.map(s => {
         const shipment = {
             id: s.id,
@@ -95,14 +89,19 @@ const formatShipments = (shipments) => {
         };
         if (s.totalCharges !== null && s.totalCharges !== undefined) {
             shipment.charges = {
-                storage: parseFloat(s.storageCharges),
-                handling: parseFloat(s.handlingCharges),
-                total: parseFloat(s.totalCharges),
+                storage: parseFloat(s.storageCharges) || 0,
+                handling: parseFloat(s.handlingCharges) || 0,
+                total: parseFloat(s.totalCharges) || 0,
             };
         }
         return shipment;
     });
 };
+
+// Welcome route for the root URL
+app.get('/', (req, res) => {
+    res.status(200).json({ message: "Welcome to the Gemini WMS API. Server is running." });
+});
 
 // GET all shipments
 app.get('/api/shipments', async (req, res) => {
