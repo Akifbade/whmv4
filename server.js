@@ -380,20 +380,41 @@ app.delete('/api/users/:id', authenticateToken, authorizeRoles('Admin'), async (
 app.get('/api/shipments', authenticateToken, async (req, res) => {
     try {
         const [shipments] = await db.execute('SELECT * FROM shipments ORDER BY arrivalDate DESC');
-        // For each shipment, fetch its custom data
-        for (const shipment of shipments) {
-            const [customDataRows] = await db.execute(
-                `SELECT cf.label, scd.value 
-                 FROM shipment_custom_data scd
-                 JOIN custom_fields cf ON scd.fieldId = cf.id
-                 WHERE scd.shipmentId = ?`, [shipment.id]
-            );
-            shipment.customFields = customDataRows.reduce((acc, row) => {
-                acc[row.label] = row.value;
-                return acc;
-            }, {});
+
+        if (shipments.length === 0) {
+            return res.json([]);
         }
-        res.json(shipments);
+
+        // Get all shipment IDs
+        const shipmentIds = shipments.map(s => s.id);
+
+        // Fetch all custom data for those shipments in a single query
+        const [customDataRows] = await db.execute(
+            `SELECT scd.shipmentId, cf.label, scd.value 
+             FROM shipment_custom_data scd
+             JOIN custom_fields cf ON scd.fieldId = cf.id
+             WHERE scd.shipmentId IN (?)`, [shipmentIds]
+        );
+
+        // Group custom data by shipmentId for efficient lookup
+        const customDataMap = customDataRows.reduce((map, row) => {
+            if (!map[row.shipmentId]) {
+                map[row.shipmentId] = {};
+            }
+            map[row.shipmentId][row.label] = row.value;
+            return map;
+        }, {});
+        
+        // Map the custom data back to the shipments
+        const shipmentsWithCustomFields = shipments.map(shipment => {
+            return {
+                ...shipment,
+                // Make sure to parse the JSON fields back if they are stored as strings
+                customFields: customDataMap[shipment.id] || {}
+            };
+        });
+
+        res.json(shipmentsWithCustomFields);
     } catch (error) {
         console.error("Error fetching shipments:", error);
         res.status(500).json({ message: 'Failed to fetch shipments' });
