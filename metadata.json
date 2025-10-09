@@ -1,0 +1,7 @@
+{
+  "name": "Gemini Warehouse Management System",
+  "description": "A smart warehouse management system dashboard built with React and Tailwind CSS. It leverages the Gemini API to provide intelligent suggestions for rack placement and generate insightful reports.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
